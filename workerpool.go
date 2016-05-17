@@ -34,6 +34,11 @@ Additionally, the dispatcher can adjust the number of workers as appropriate
 for the work load, without having to utilize locked counters and checks
 incurred on task submission.
 
+When no tasks have been submitted for a period of time, a worker is removed by
+the dispatcher.  This is done until there are no more workers to remove.  The
+minimum number of workers is always zero, because the time to start new workers
+is insignificant.
+
 Usage note
 
 It is advisable to use different worker pools for tasks that are bound by
@@ -63,10 +68,6 @@ const (
 	// If worker pool receives no new work for this period of time, then stop
 	// a worker goroutine.
 	idleTimeoutSec = 5
-
-	// The minimum number of workers is always zero, because the time to start
-	// new workers is insignificant.
-	minWorkers = 0
 )
 
 type WorkerPool interface {
@@ -189,7 +190,7 @@ shutdown:
 			}
 		case <-timeout.C:
 			// Timed out waiting for work to arrive.  Kill a ready worker.
-			if workerCount > minWorkers {
+			if workerCount > 0 {
 				select {
 				case workerTaskChan = <-p.readyWorkers:
 					// A worker is ready, so kill.
