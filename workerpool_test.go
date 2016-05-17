@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,11 +27,17 @@ func TestMaxWorkers(t *testing.T) {
 		})
 	}
 
-	// Wait for all enqueued tasks to be dispatched to workers.
-	time.Sleep(1 * time.Second)
-
 	// Release workers.
 	close(sync)
+
+	// Wait for all enqueued tasks to be dispatched to workers.
+	for i := 0; i < 10; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if atomic.LoadInt32(&workers) == max {
+			break
+		}
+		runtime.Gosched()
+	}
 
 	if atomic.LoadInt32(&workers) != max {
 		t.Fatal("Did not get to maximum number of go routines")
@@ -77,7 +84,14 @@ func TestWorkerTimeout(t *testing.T) {
 	close(sync)
 
 	// Wait for all enqueued tasks to be ready again.
-	time.Sleep(1 * time.Second)
+	// Wait for all enqueued tasks to be dispatched to workers.
+	for i := 0; i < 10; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if len(wpImpl.readyWorkers) == max {
+			break
+		}
+		runtime.Gosched()
+	}
 
 	startCount := len(wpImpl.readyWorkers)
 	if startCount != max {
