@@ -105,7 +105,7 @@ type WorkerPool interface {
 // The maxWorkers parameter specifies the maximum number of workers that will
 // execute tasks concurrently.  After each timeout period, a worker goroutine
 // is stopped until there are no remaining workers.
-func NewWP(maxWorkers int) (WorkerPool, error) {
+func New(maxWorkers int) (WorkerPool, error) {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
 		maxWorkers = 1
