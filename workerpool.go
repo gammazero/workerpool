@@ -92,12 +92,6 @@ type WorkerPool interface {
 
 	// Stopped returns true if this worker pool has been stopped.
 	Stopped() bool
-
-	// WorkerCount returns the current number of worker goroutines.
-	//
-	// Do not rely on this value to be perfectly accurate as it may change by
-	// the time the caller gets it.
-	WorkerCount() int
 }
 
 // New creates and starts a pool of worker goroutines.
@@ -105,7 +99,7 @@ type WorkerPool interface {
 // The maxWorkers parameter specifies the maximum number of workers that will
 // execute tasks concurrently.  After each timeout period, a worker goroutine
 // is stopped until there are no remaining workers.
-func New(maxWorkers int) (WorkerPool, error) {
+func New(maxWorkers int) WorkerPool {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
 		maxWorkers = 1
@@ -122,12 +116,11 @@ func New(maxWorkers int) (WorkerPool, error) {
 	// Start the task dispatcher.
 	go pool.dispatch()
 
-	return pool, nil
+	return pool
 }
 
 type workerPool struct {
 	maxWorkers   int
-	workerCount  int
 	timeout      time.Duration
 	taskQueue    chan func()
 	readyWorkers chan chan func()
@@ -160,13 +153,11 @@ func (p *workerPool) Submit(task func()) {
 	}
 }
 
-// WorkerCount returns the current number of worker goroutines.
-func (p *workerPool) WorkerCount() int { return p.workerCount }
-
 // dispatch sends the next queued task to an available worker.
 func (p *workerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(p.timeout)
+	var workerCount int
 	var task func()
 	var ok bool
 	var workerTaskChan chan func()
@@ -186,8 +177,8 @@ shutdown:
 			default:
 				// No workers ready.
 				// Create a new worker, if not at max.
-				if p.workerCount < p.maxWorkers {
-					p.workerCount++
+				if workerCount < p.maxWorkers {
+					workerCount++
 					startWorker(p.readyWorkers)
 				}
 				// Start a goroutine to submit the task when a worker is ready.
@@ -198,12 +189,12 @@ shutdown:
 			}
 		case <-timeout.C:
 			// Timed out waiting for work to arrive.  Kill a ready worker.
-			if p.workerCount > minWorkers {
+			if workerCount > minWorkers {
 				select {
 				case workerTaskChan = <-p.readyWorkers:
 					// A worker is ready, so kill.
 					close(workerTaskChan)
-					p.workerCount--
+					workerCount--
 				default:
 					// No work, but no ready workers.  All workers are busy.
 				}
@@ -212,10 +203,10 @@ shutdown:
 	}
 
 	// Stop all remaining workers as they become ready.
-	for p.workerCount > 0 {
+	for workerCount > 0 {
 		workerTaskChan = <-p.readyWorkers
 		close(workerTaskChan)
-		p.workerCount--
+		workerCount--
 	}
 }
 
