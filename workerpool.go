@@ -63,6 +63,13 @@ const (
 	// matter how many tasks are submitted, because the dispatcher removes
 	// tasks from this queue, scheduling each immediately to a ready worker, or
 	// to a goroutine that will give it to the next ready worker.
+	//
+	// This value is also the size of the queue that workers register their
+	// availability to the dispatcher.  There may be thousands of workers, but
+	// only a small channel is needed to register some of the workers.
+	//
+	// While 0 (unbuffered) is usable, testing shows that a small amount of
+	// buffering has slightly better performance with input bursts.
 	taskQueueSize = 16
 
 	// If worker pool receives no new work for this period of time, then stop
@@ -109,7 +116,7 @@ func New(maxWorkers int) WorkerPool {
 	pool := &workerPool{
 		taskQueue:    make(chan func(), taskQueueSize),
 		maxWorkers:   maxWorkers,
-		readyWorkers: make(chan chan func(), maxWorkers),
+		readyWorkers: make(chan chan func(), taskQueueSize),
 		timeout:      time.Second * idleTimeoutSec,
 		stoppedChan:  make(chan struct{}),
 	}
@@ -162,13 +169,14 @@ func (p *workerPool) dispatch() {
 	var task func()
 	var ok bool
 	var workerTaskChan chan func()
-shutdown:
+	startReady := make(chan chan func())
+Loop:
 	for {
 		timeout.Reset(p.timeout)
 		select {
 		case task, ok = <-p.taskQueue:
 			if !ok {
-				break shutdown
+				break Loop
 			}
 			// Got a task to do.
 			select {
@@ -180,13 +188,20 @@ shutdown:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
 					workerCount++
-					startWorker(p.readyWorkers)
+					go func(t func()) {
+						startWorker(startReady, p.readyWorkers)
+						// Submit the task when the new worker.
+						taskChan := <-startReady
+						taskChan <- t
+					}(task)
+				} else {
+					// Start a goroutine to submit the task when an existing
+					// worker is ready.
+					go func(t func()) {
+						taskChan := <-p.readyWorkers
+						taskChan <- t
+					}(task)
 				}
-				// Start a goroutine to submit the task when a worker is ready.
-				go func(t func()) {
-					taskChan := <-p.readyWorkers
-					taskChan <- t
-				}(task)
 			}
 		case <-timeout.C:
 			// Timed out waiting for work to arrive.  Kill a ready worker.
@@ -213,20 +228,27 @@ shutdown:
 
 // startWorker starts a goroutine that executes tasks given by the dispatcher.
 //
+// When a new worker starts, it registers its availability on the startReady
+// channel.  This ensures that the goroutine associated with starting the
+// worker gets to use the worker to execute its task.  Otherwise, the main
+// dispatcher loop could steal the new worker and not know to start up another
+// worker for the waiting goroutine.  The task would then have to wait for
+// another existing worker to become available, even though capacity is
+// available to start additional workers.
+//
 // A worker registers that is it available to do work by putting its task
 // channel on the readyWorkers channel.  The dispatcher reads a worker's task
 // channel from the readyWorkers channel, and writes a task to the worker over
 // the worker's task channel.  To stop a worker, the dispatcher closes a
 // worker's task channel, instead of writing a task to it.
-func startWorker(readyWorkers chan chan func()) {
+func startWorker(startReady, readyWorkers chan chan func()) {
 	go func() {
 		taskChan := make(chan func())
 		var task func()
 		var ok bool
+		// Register availability on starReady channel.
+		startReady <- taskChan
 		for {
-			// Register availability on readyWorkers channel.
-			readyWorkers <- taskChan
-
 			// Read task from dispatcher.
 			task, ok = <-taskChan
 			if !ok {
@@ -236,6 +258,9 @@ func startWorker(readyWorkers chan chan func()) {
 
 			// Execute the task.
 			task()
+
+			// Register availability on readyWorkers channel.
+			readyWorkers <- taskChan
 		}
 	}()
 }
