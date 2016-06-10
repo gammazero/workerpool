@@ -21,43 +21,18 @@ const (
 	idleTimeoutSec = 5
 )
 
-type WorkerPool interface {
-	// Submit enqueues a function for a worker to execute.
-	//
-	// Any external values needed by the task function must be captured in a
-	// closure.  Any return values should be returned over a channel that is
-	// captured in the task function closure.
-	//
-	// Submit will not block regardless of the number of tasks submitted.  Each
-	// task is immediately given to an available worker or passed to a
-	// goroutine to be given to the next available worker.  If there are no
-	// available workers, the dispatcher adds a worker, until the maximum
-	// number of workers is running.
-	Submit(task func())
-
-	// Stop stops the worker pool and waits for workers to complete.
-	//
-	// Since creating the worker pool starts at least one goroutine, for the
-	// dispatcher, this function should be called when the worker pool is no
-	// longer needed.
-	Stop()
-
-	// Stopped returns true if this worker pool has been stopped.
-	Stopped() bool
-}
-
 // New creates and starts a pool of worker goroutines.
 //
 // The maxWorkers parameter specifies the maximum number of workers that will
 // execute tasks concurrently.  After each timeout period, a worker goroutine
 // is stopped until there are no remaining workers.
-func New(maxWorkers int) WorkerPool {
+func New(maxWorkers int) *WorkerPool {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
 		maxWorkers = 1
 	}
 
-	pool := &workerPool{
+	pool := &WorkerPool{
 		taskQueue:    make(chan func(), taskQueueSize),
 		maxWorkers:   maxWorkers,
 		readyWorkers: make(chan chan func(), taskQueueSize),
@@ -71,7 +46,9 @@ func New(maxWorkers int) WorkerPool {
 	return pool
 }
 
-type workerPool struct {
+// WorkerPool is a collection of goroutines, where the number of concurrent
+// goroutines processing requests does not exceed the specified maximum.
+type WorkerPool struct {
 	maxWorkers   int
 	timeout      time.Duration
 	taskQueue    chan func()
@@ -80,7 +57,11 @@ type workerPool struct {
 }
 
 // Stop stops the worker pool and waits for workers to complete.
-func (p *workerPool) Stop() {
+//
+// Since creating the worker pool starts at least one goroutine, for the
+// dispatcher, this function should be called when the worker pool is no longer
+// needed.
+func (p *WorkerPool) Stop() {
 	if p.Stopped() {
 		return
 	}
@@ -89,7 +70,7 @@ func (p *workerPool) Stop() {
 }
 
 // Stopped returns true if this worker pool has been stopped.
-func (p *workerPool) Stopped() bool {
+func (p *WorkerPool) Stopped() bool {
 	select {
 	case <-p.stoppedChan:
 		return true
@@ -99,14 +80,24 @@ func (p *workerPool) Stopped() bool {
 }
 
 // Submit enqueues a function for a worker to execute.
-func (p *workerPool) Submit(task func()) {
+//
+// Any external values needed by the task function must be captured in a
+// closure.  Any return values should be returned over a channel that is
+// captured in the task function closure.
+//
+// Submit will not block regardless of the number of tasks submitted.  Each
+// task is immediately given to an available worker or passed to a goroutine to
+// be given to the next available worker.  If there are no available workers,
+// the dispatcher adds a worker, until the maximum number of workers is
+// running.
+func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
 		p.taskQueue <- task
 	}
 }
 
 // dispatch sends the next queued task to an available worker.
-func (p *workerPool) dispatch() {
+func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(p.timeout)
 	var workerCount int

@@ -44,7 +44,6 @@ func TestReuseWorkers(t *testing.T) {
 	t.Parallel()
 
 	wp := New(5)
-	wpImpl := wp.(*workerPool)
 	defer wp.Stop()
 
 	sync := make(chan struct{})
@@ -56,7 +55,7 @@ func TestReuseWorkers(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if countReady(wpImpl) > 1 {
+	if countReady(wp) > 1 {
 		t.Fatal("Worker not reused")
 	}
 }
@@ -65,7 +64,6 @@ func TestWorkerTimeout(t *testing.T) {
 	t.Parallel()
 
 	wp := New(max)
-	wpImpl := wp.(*workerPool)
 	defer wp.Stop()
 
 	sync := make(chan struct{})
@@ -84,25 +82,25 @@ func TestWorkerTimeout(t *testing.T) {
 		<-started
 	}
 
-	if anyReady(wpImpl) {
+	if anyReady(wp) {
 		t.Fatal("number of ready workers should ber zero")
 	}
 	// Release workers.
 	close(sync)
 
-	if countReady(wpImpl) != max {
+	if countReady(wp) != max {
 		t.Fatal("Expected", max, "ready workers")
 	}
 
 	// Check that a worker timed out.
 	time.Sleep((idleTimeoutSec + 1) * time.Second)
-	if countReady(wpImpl) != max-1 {
+	if countReady(wp) != max-1 {
 		t.Fatal("First worker did not timeout")
 	}
 
 	// Check that another worker timed out.
 	time.Sleep((idleTimeoutSec + 1) * time.Second)
-	if countReady(wpImpl) != max-2 {
+	if countReady(wp) != max-2 {
 		t.Fatal("Second worker did not timeout")
 	}
 }
@@ -111,7 +109,6 @@ func TestStop(t *testing.T) {
 	t.Parallel()
 
 	wp := New(max)
-	wpImpl := wp.(*workerPool)
 	defer wp.Stop()
 
 	started := make(chan struct{}, max)
@@ -140,12 +137,12 @@ func TestStop(t *testing.T) {
 	close(sync)
 
 	wp.Stop()
-	if anyReady(wpImpl) {
+	if anyReady(wp) {
 		t.Fatal("should have zero workers after stop")
 	}
 }
 
-func anyReady(w *workerPool) bool {
+func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
 		w.readyWorkers <- wkCh
@@ -155,7 +152,7 @@ func anyReady(w *workerPool) bool {
 	return false
 }
 
-func countReady(w *workerPool) int {
+func countReady(w *WorkerPool) int {
 	// Try to pull max workers off of ready queue.
 	timeout := time.After(5 * time.Second)
 	readyTmp := make(chan chan func(), max)
@@ -203,7 +200,6 @@ func BenchmarkExecute(b *testing.B) {
 	wp := New(max)
 	defer wp.Stop()
 	allDone := new(sync.WaitGroup)
-	var v int
 
 	b.ResetTimer()
 
@@ -211,7 +207,7 @@ func BenchmarkExecute(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		allDone.Add(1)
 		wp.Submit(func() {
-			v = i * i
+			_ = i * i
 			allDone.Done()
 		})
 	}
