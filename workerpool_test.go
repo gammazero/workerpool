@@ -55,6 +55,8 @@ func TestReuseWorkers(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	// If the same worker was always reused, then only one worker would have
+	// been created and there should only be one ready.
 	if countReady(wp) > 1 {
 		t.Fatal("Worker not reused")
 	}
@@ -142,6 +144,33 @@ func TestStop(t *testing.T) {
 	}
 }
 
+func TestSubmitWait(t *testing.T) {
+	wp := New(1)
+	defer wp.Stop()
+
+	done1 := make(chan struct{})
+	wp.Submit(func() {
+		time.Sleep(100 * time.Millisecond)
+		close(done1)
+	})
+	select {
+	case <-done1:
+		t.Fatal("Submit did not return immediately")
+	default:
+	}
+
+	done2 := make(chan struct{})
+	wp.SubmitWait(func() {
+		time.Sleep(100 * time.Millisecond)
+		close(done2)
+	})
+	select {
+	case <-done2:
+	default:
+		t.Fatal("SubmitWait did not wait for function to execute")
+	}
+}
+
 func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
@@ -185,32 +214,105 @@ Run benchmarking with: go test -bench '.'
 */
 
 func BenchmarkEnqueue(b *testing.B) {
-	wp := New(max)
+	wp := New(1)
 	defer wp.Stop()
+	releaseChan := make(chan struct{})
 
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {})
+		wp.Submit(func() { <-releaseChan })
 	}
+	close(releaseChan)
 }
 
-func BenchmarkExecute(b *testing.B) {
-	wp := New(max)
+func BenchmarkExecute1Worker(b *testing.B) {
+	wp := New(1)
 	defer wp.Stop()
 	allDone := new(sync.WaitGroup)
+	allDone.Add(b.N)
 
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
-		allDone.Add(1)
 		wp.Submit(func() {
-			_ = i * i
+			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
+	allDone.Wait()
+}
 
+func BenchmarkExecute2Worker(b *testing.B) {
+	wp := New(2)
+	defer wp.Stop()
+	allDone := new(sync.WaitGroup)
+	allDone.Add(b.N)
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		wp.Submit(func() {
+			time.Sleep(time.Millisecond)
+			allDone.Done()
+		})
+	}
+	allDone.Wait()
+}
+
+func BenchmarkExecute4Workers(b *testing.B) {
+	wp := New(4)
+	defer wp.Stop()
+	allDone := new(sync.WaitGroup)
+	allDone.Add(b.N)
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		wp.Submit(func() {
+			time.Sleep(time.Millisecond)
+			allDone.Done()
+		})
+	}
+	allDone.Wait()
+}
+
+func BenchmarkExecute16Workers(b *testing.B) {
+	wp := New(16)
+	defer wp.Stop()
+	allDone := new(sync.WaitGroup)
+	allDone.Add(b.N)
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		wp.Submit(func() {
+			time.Sleep(time.Millisecond)
+			allDone.Done()
+		})
+	}
+	allDone.Wait()
+}
+
+func BenchmarkExecute64Workers(b *testing.B) {
+	wp := New(64)
+	defer wp.Stop()
+	allDone := new(sync.WaitGroup)
+	allDone.Add(b.N)
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		wp.Submit(func() {
+			time.Sleep(time.Millisecond)
+			allDone.Done()
+		})
+	}
 	allDone.Wait()
 }

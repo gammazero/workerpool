@@ -3,18 +3,10 @@ package workerpool
 import "time"
 
 const (
-	// Size of queue to which tasks are submitted.  This can be small, no
-	// matter how many tasks are submitted, because the dispatcher removes
-	// tasks from this queue, scheduling each immediately to a ready worker, or
-	// to a goroutine that will give it to the next ready worker.
-	//
-	// This value is also the size of the queue that workers register their
-	// availability to the dispatcher.  There may be thousands of workers, but
+	// This value is the size of the queue that workers register their
+	// availability to the dispatcher.  There may be hundreds of workers, but
 	// only a small channel is needed to register some of the workers.
-	//
-	// While 0 (unbuffered) is usable, testing shows that a small amount of
-	// buffering has slightly better performance with input bursts.
-	taskQueueSize = 16
+	readyQueueSize = 16
 
 	// If worker pool receives no new work for this period of time, then stop
 	// a worker goroutine.
@@ -32,10 +24,11 @@ func New(maxWorkers int) *WorkerPool {
 		maxWorkers = 1
 	}
 
+	// taskQueue is unbuffered since items are always removed immediately.
 	pool := &WorkerPool{
-		taskQueue:    make(chan func(), taskQueueSize),
+		taskQueue:    make(chan func()),
 		maxWorkers:   maxWorkers,
-		readyWorkers: make(chan chan func(), taskQueueSize),
+		readyWorkers: make(chan chan func(), readyQueueSize),
 		timeout:      time.Second * idleTimeoutSec,
 		stoppedChan:  make(chan struct{}),
 	}
@@ -94,6 +87,19 @@ func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
 		p.taskQueue <- task
 	}
+}
+
+// SubmitWait enqueues the given function and waits for it to be executed.
+func (p *WorkerPool) SubmitWait(task func()) {
+	if task == nil {
+		return
+	}
+	doneChan := make(chan struct{})
+	p.taskQueue <- func() {
+		task()
+		close(doneChan)
+	}
+	<-doneChan
 }
 
 // dispatch sends the next queued task to an available worker.
