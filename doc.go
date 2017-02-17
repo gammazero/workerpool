@@ -19,10 +19,11 @@ available, and will not block the submission of tasks.
 The intent of the worker pool is to limit the concurrency of task execution,
 not limit the number of tasks queued to be executed. Therefore, this unbounded
 input of tasks is acceptable as the tasks cannot be discarded.  If the number
-of inbound tasks if too many to even queue for pending processing, then this
-solution is outside the scope of the worker pool, and should be solved by
-distributing load over multiple systems, storing input that requires processing
-in some intermediate storage (e.g. a database or file system).
+of inbound tasks is too many to even queue for pending processing, then the
+solution is outside the scope of workerpool, and should be solved by
+distributing load over multiple systems, and/or storing input for pending
+processing in intermediate storage such as a database, file system, distributed
+message queue, etc.
 
 Dispatcher
 

@@ -230,7 +230,7 @@ func BenchmarkEnqueue(b *testing.B) {
 func BenchmarkExecute1Worker(b *testing.B) {
 	wp := New(1)
 	defer wp.Stop()
-	allDone := new(sync.WaitGroup)
+	var allDone sync.WaitGroup
 	allDone.Add(b.N)
 
 	b.ResetTimer()
@@ -248,7 +248,7 @@ func BenchmarkExecute1Worker(b *testing.B) {
 func BenchmarkExecute2Worker(b *testing.B) {
 	wp := New(2)
 	defer wp.Stop()
-	allDone := new(sync.WaitGroup)
+	var allDone sync.WaitGroup
 	allDone.Add(b.N)
 
 	b.ResetTimer()
@@ -266,7 +266,7 @@ func BenchmarkExecute2Worker(b *testing.B) {
 func BenchmarkExecute4Workers(b *testing.B) {
 	wp := New(4)
 	defer wp.Stop()
-	allDone := new(sync.WaitGroup)
+	var allDone sync.WaitGroup
 	allDone.Add(b.N)
 
 	b.ResetTimer()
@@ -284,7 +284,7 @@ func BenchmarkExecute4Workers(b *testing.B) {
 func BenchmarkExecute16Workers(b *testing.B) {
 	wp := New(16)
 	defer wp.Stop()
-	allDone := new(sync.WaitGroup)
+	var allDone sync.WaitGroup
 	allDone.Add(b.N)
 
 	b.ResetTimer()
@@ -302,7 +302,7 @@ func BenchmarkExecute16Workers(b *testing.B) {
 func BenchmarkExecute64Workers(b *testing.B) {
 	wp := New(64)
 	defer wp.Stop()
-	allDone := new(sync.WaitGroup)
+	var allDone sync.WaitGroup
 	allDone.Add(b.N)
 
 	b.ResetTimer()
