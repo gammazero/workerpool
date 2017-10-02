@@ -8,7 +8,21 @@ import "time"
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
 // between the time one task is started and the next task is started.  Then
-// call WorkerPool.SubmitPaced() or WorkerPool.SubmitPacedWait().
+// call Pace(), passing your task function.  A new paced task function is
+// returned that can then be passed to WorkerPool's Submit() or SubmitWait().
+// For example:
+//
+//     wp := workerpool.New(5)
+//     pacer := workerpool.NewPacer(time.Second)
+//
+//     pacedTask := pacer.Pace(func() {
+//         fmt.Println("Hello World")
+//     })
+//
+//     wp.Submit(pacedTask)
+//
+// NOTE: Do not call Pacer.Stop() until all paced tasks have completed, or
+// paced tasks will hang waiting for pacer to unblock them.
 type Pacer struct {
 	delay time.Duration
 	gate  chan struct{}
@@ -41,7 +55,8 @@ func (p *Pacer) Next() {
 	return
 }
 
-// Stop stops the Pacer from running.
+// Stop stops the Pacer from running.  Do not call until all paced tasks have
+// completed, or paced tasks will hang waiting for pacer to unblock them.
 func (p *Pacer) Stop() {
 	close(p.gate)
 }
