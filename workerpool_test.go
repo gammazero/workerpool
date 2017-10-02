@@ -178,6 +178,7 @@ func TestPacedWorkers(t *testing.T) {
 	delay2 := 300 * time.Millisecond
 	wp := New(5)
 	defer wp.Stop()
+
 	pacer := NewPacer(delay1)
 	defer pacer.Stop()
 
@@ -188,16 +189,20 @@ func TestPacedWorkers(t *testing.T) {
 	tasksDone.Add(20)
 	start := time.Now()
 
+	pacedTask := pacer.Pace(func() {
+		//fmt.Println("Task")
+		tasksDone.Done()
+	})
+
+	slowPacedTask := slowPacer.Pace(func() {
+		//fmt.Println("SlowTask")
+		tasksDone.Done()
+	})
+
 	// Cause worker to be created, and available for reuse before next task.
 	for i := 0; i < 10; i++ {
-		wp.SubmitPaced(pacer, func() {
-			//fmt.Println("Task")
-			tasksDone.Done()
-		})
-		wp.SubmitPaced(slowPacer, func() {
-			//fmt.Println("Slow task")
-			tasksDone.Done()
-		})
+		wp.Submit(pacedTask)
+		wp.Submit(slowPacedTask)
 	}
 
 	tasksDone.Wait()

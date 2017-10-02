@@ -24,6 +24,16 @@ func NewPacer(delay time.Duration) *Pacer {
 	return p
 }
 
+// Pace wraps a function in a paced function.  The returned paced function can
+// then be submitted to the workerpool, using Submit or SubmitWait, and
+// starting the tasks is paced according to the pacer's delay.
+func (p *Pacer) Pace(task func()) func() {
+	return func() {
+		p.Next()
+		task()
+	}
+}
+
 // Next submits a run request to the gate and returns when it is time to run.
 func (p *Pacer) Next() {
 	// Wait for item to be read from gate.
