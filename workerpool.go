@@ -102,6 +102,31 @@ func (p *WorkerPool) SubmitWait(task func()) {
 	<-doneChan
 }
 
+// SubmitPaced wraps task in a paced function and enqueues it for execution.
+func (p *WorkerPool) SubmitPaced(pacer *Pacer, task func()) {
+	if task != nil {
+		// Wrap task in paced function.
+		p.taskQueue <- func() {
+			pacer.Next()
+			task()
+		}
+	}
+}
+
+// SubmitPacedWait submits a paced task and waits for it to be executed.
+func (p *WorkerPool) SubmitPacedWait(pacer *Pacer, task func()) {
+	if task == nil {
+		return
+	}
+	doneChan := make(chan struct{})
+	p.taskQueue <- func() {
+		pacer.Next()
+		task()
+		close(doneChan)
+	}
+	<-doneChan
+}
+
 // dispatch sends the next queued task to an available worker.
 func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)

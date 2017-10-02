@@ -171,6 +171,44 @@ func TestSubmitWait(t *testing.T) {
 	}
 }
 
+func TestPacedWorkers(t *testing.T) {
+	t.Parallel()
+
+	delay1 := 100 * time.Millisecond
+	delay2 := 300 * time.Millisecond
+	wp := New(5)
+	defer wp.Stop()
+	pacer := NewPacer(delay1)
+	defer pacer.Stop()
+
+	slowPacer := NewPacer(delay2)
+	defer slowPacer.Stop()
+
+	tasksDone := new(sync.WaitGroup)
+	tasksDone.Add(20)
+	start := time.Now()
+
+	// Cause worker to be created, and available for reuse before next task.
+	for i := 0; i < 10; i++ {
+		wp.SubmitPaced(pacer, func() {
+			//fmt.Println("Task")
+			tasksDone.Done()
+		})
+		wp.SubmitPaced(slowPacer, func() {
+			//fmt.Println("Slow task")
+			tasksDone.Done()
+		})
+	}
+
+	tasksDone.Wait()
+	elapsed := time.Now().Sub(start)
+	// 9 times delay2 since no wait for first task, and pacer and slowPacer run
+	// currently so only limiter is slowPacer.
+	if elapsed < 9*delay2 {
+		t.Fatal("Did not pace tasks correctly - finished too soon:", elapsed)
+	}
+}
+
 func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
