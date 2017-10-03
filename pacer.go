@@ -24,16 +24,23 @@ import "time"
 // NOTE: Do not call Pacer.Stop() until all paced tasks have completed, or
 // paced tasks will hang waiting for pacer to unblock them.
 type Pacer struct {
-	delay time.Duration
-	gate  chan struct{}
+	delay  time.Duration
+	gate   chan struct{}
+	pause  chan struct{}
+	paused chan struct{}
 }
 
 // NewPacer creates and runs a new Pacer.
-func NewPacer(delay time.Duration) *Pacer {
+func NewPacer(delay time.Duration, pausable bool) *Pacer {
 	p := &Pacer{
 		delay: delay,
 		gate:  make(chan struct{}),
 	}
+	if pausable {
+		p.pause = make(chan struct{}, 1)
+		p.paused = make(chan struct{}, 1)
+	}
+
 	go p.run()
 	return p
 }
@@ -52,7 +59,6 @@ func (p *Pacer) Pace(task func()) func() {
 func (p *Pacer) Next() {
 	// Wait for item to be read from gate.
 	p.gate <- struct{}{}
-	return
 }
 
 // Stop stops the Pacer from running.  Do not call until all paced tasks have
@@ -61,11 +67,36 @@ func (p *Pacer) Stop() {
 	close(p.gate)
 }
 
+// IsPaused returns true if execution is paused.
+func (p *Pacer) IsPaused() bool {
+	return p.pause != nil && len(p.paused) != 0
+}
+
+// Pause suspends execution of any tasks by the pacer.
+func (p *Pacer) Pause() {
+	if p.pause != nil {
+		p.pause <- struct{}{}
+		p.paused <- struct{}{}
+	}
+}
+
+// Resume continues execution after Pause.
+func (p *Pacer) Resume() {
+	if p.pause != nil {
+		<-p.paused
+		<-p.pause
+	}
+}
+
 func (p *Pacer) run() {
 	// Read item from gate no faster that one per delay.
 	// Reading from the unbuffered channel serves as a "tick"
 	// and unblocks the writer.
 	for _ = range p.gate {
 		time.Sleep(p.delay)
+		if p.pause != nil {
+			p.pause <- struct{}{}
+			<-p.pause
+		}
 	}
 }

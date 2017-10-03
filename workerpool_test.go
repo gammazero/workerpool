@@ -179,10 +179,10 @@ func TestPacedWorkers(t *testing.T) {
 	wp := New(5)
 	defer wp.Stop()
 
-	pacer := NewPacer(delay1)
+	pacer := NewPacer(delay1, true)
 	defer pacer.Stop()
 
-	slowPacer := NewPacer(delay2)
+	slowPacer := NewPacer(delay2, false)
 	defer slowPacer.Stop()
 
 	tasksDone := new(sync.WaitGroup)
@@ -203,6 +203,17 @@ func TestPacedWorkers(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		wp.Submit(pacedTask)
 		wp.Submit(slowPacedTask)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	pacer.Pause()
+	time.Sleep(time.Second)
+	if !pacer.IsPaused() {
+		t.Fatal("should be paused")
+	}
+	pacer.Resume()
+	if pacer.IsPaused() {
+		t.Fatal("should not be paused")
 	}
 
 	tasksDone.Wait()
