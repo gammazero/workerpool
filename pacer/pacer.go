@@ -18,7 +18,7 @@ import "time"
 // faster than one per delay time.
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
-// between the time one task is started and the next task is started.  Then
+// between the start of one task the start of the next task.  Then
 // call Pace(), passing your task function.  A new paced task function is
 // returned that can then be passed to WorkerPool's Submit() or SubmitWait().
 // For example:
@@ -34,6 +34,8 @@ import "time"
 //
 // NOTE: Do not call Pacer.Stop() until all paced tasks have completed, or
 // paced tasks will hang waiting for pacer to unblock them.
+//
+// Paced functions may also be run as goroutines, and are also paced.
 type Pacer struct {
 	delay  time.Duration
 	gate   chan struct{}
@@ -42,14 +44,12 @@ type Pacer struct {
 }
 
 // NewPacer creates and runs a new Pacer.
-func NewPacer(delay time.Duration, pausable bool) *Pacer {
+func NewPacer(delay time.Duration) *Pacer {
 	p := &Pacer{
-		delay: delay,
-		gate:  make(chan struct{}),
-	}
-	if pausable {
-		p.pause = make(chan struct{}, 1)
-		p.paused = make(chan struct{}, 1)
+		delay:  delay,
+		gate:   make(chan struct{}),
+		pause:  make(chan struct{}, 1),
+		paused: make(chan struct{}, 1),
 	}
 
 	go p.run()
@@ -80,23 +80,19 @@ func (p *Pacer) Stop() {
 
 // IsPaused returns true if execution is paused.
 func (p *Pacer) IsPaused() bool {
-	return p.pause != nil && len(p.paused) != 0
+	return len(p.paused) != 0
 }
 
 // Pause suspends execution of any tasks by the pacer.
 func (p *Pacer) Pause() {
-	if p.pause != nil {
-		p.pause <- struct{}{}
-		p.paused <- struct{}{}
-	}
+	p.pause <- struct{}{}  // block this channel
+	p.paused <- struct{}{} // set flag to indicate paused
 }
 
 // Resume continues execution after Pause.
 func (p *Pacer) Resume() {
-	if p.pause != nil {
-		<-p.paused
-		<-p.pause
-	}
+	<-p.paused // clear flag to indicate paused
+	<-p.pause  // unblock this channel
 }
 
 func (p *Pacer) run() {
@@ -105,9 +101,7 @@ func (p *Pacer) run() {
 	// and unblocks the writer.
 	for _ = range p.gate {
 		time.Sleep(p.delay)
-		if p.pause != nil {
-			p.pause <- struct{}{}
-			<-p.pause
-		}
+		p.pause <- struct{}{} // will wait here is channel blocked
+		<-p.pause             // clear channel
 	}
 }

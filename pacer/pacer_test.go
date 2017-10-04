@@ -16,10 +16,10 @@ func TestPacedWorkers(t *testing.T) {
 	wp := workerpool.New(5)
 	defer wp.Stop()
 
-	pacer := NewPacer(delay1, true)
+	pacer := NewPacer(delay1)
 	defer pacer.Stop()
 
-	slowPacer := NewPacer(delay2, false)
+	slowPacer := NewPacer(delay2)
 	defer slowPacer.Stop()
 
 	tasksDone := new(sync.WaitGroup)
