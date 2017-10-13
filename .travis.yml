@@ -9,4 +9,8 @@ go:
 before_script:
   - go vet ./...
 
-script: go test -v -race ./...
+script:
+  - ./go.test.sh
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
