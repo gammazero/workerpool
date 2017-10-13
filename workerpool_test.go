@@ -11,7 +11,12 @@ const max = 20
 func TestMaxWorkers(t *testing.T) {
 	t.Parallel()
 
-	wp := New(max)
+	wp := New(0)
+	if wp.maxWorkers != 1 {
+		t.Fatal("should have created one worker")
+	}
+
+	wp = New(max)
 	defer wp.Stop()
 
 	started := make(chan struct{}, max)
@@ -147,6 +152,10 @@ func TestStop(t *testing.T) {
 func TestSubmitWait(t *testing.T) {
 	wp := New(1)
 	defer wp.Stop()
+
+	// Check that these are noop.
+	wp.Submit(nil)
+	wp.SubmitWait(nil)
 
 	done1 := make(chan struct{})
 	wp.Submit(func() {
