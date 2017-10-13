@@ -1,10 +1,16 @@
 # workerpool
 [![Build Status](https://travis-ci.org/gammazero/workerpool.svg)](https://travis-ci.org/gammazero/workerpool)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gammazero/workerpool)](https://goreportcard.com/report/github.com/gammazero/workerpool)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gammazero/workerpool/blob/master/LICENSE)
 
 Concurrency limiting goroutine pool
 
 [![GoDoc](https://godoc.org/github.com/gammazero/workerpool?status.svg)](https://godoc.org/github.com/gammazero/workerpool)
+
+This implementation builds on ideas from the following:
+
+- http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang
+- http://nesv.github.io/golang/2014/02/25/worker-queues-in-go.html
 
 ## Installation
 To install this package, you need to setup your Go workspace.  The simplest way to install the library is to run:
