@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/gammazero/workerpool/branch/master/graph/badge.svg)](https://codecov.io/gh/gammazero/workerpool)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gammazero/workerpool/blob/master/LICENSE)
 
-Concurrency limiting goroutine pool
+Concurrency limiting goroutine pool. Limits the concurrency of task execution, not the number of tasks queued. 
 
 [![GoDoc](https://godoc.org/github.com/gammazero/workerpool?status.svg)](https://godoc.org/github.com/gammazero/workerpool)
 
