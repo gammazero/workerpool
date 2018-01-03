@@ -18,24 +18,24 @@ import "time"
 // faster than one per delay time.
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
-// between the start of one task the start of the next task.  Then
-// call Pace(), passing your task function.  A new paced task function is
-// returned that can then be passed to WorkerPool's Submit() or SubmitWait().
-// For example:
+// between the start of one task the start of the next task.  Then call Pace(),
+// passing your task function.  A new paced task function is returned that can
+// then be passed to WorkerPool's Submit() or SubmitWait(), or called as a go
+// routine.  Paced functions run as goroutines, are also paced.  For example:
 //
-//     wp := workerpool.New(5)
-//     pacer := workerpool.NewPacer(time.Second)
+//     pacer := pacer.NewPacer(time.Second)
 //
 //     pacedTask := pacer.Pace(func() {
 //         fmt.Println("Hello World")
 //     })
 //
+//     wp := workerpool.New(5)
 //     wp.Submit(pacedTask)
+//
+//     go pacedTask()
 //
 // NOTE: Do not call Pacer.Stop() until all paced tasks have completed, or
 // paced tasks will hang waiting for pacer to unblock them.
-//
-// Paced functions may also be run as goroutines, and are also paced.
 type Pacer struct {
 	delay  time.Duration
 	gate   chan struct{}
@@ -96,12 +96,12 @@ func (p *Pacer) Resume() {
 }
 
 func (p *Pacer) run() {
-	// Read item from gate no faster that one per delay.
+	// Read item from gate no faster than one per delay.
 	// Reading from the unbuffered channel serves as a "tick"
 	// and unblocks the writer.
 	for _ = range p.gate {
 		time.Sleep(p.delay)
-		p.pause <- struct{}{} // will wait here is channel blocked
+		p.pause <- struct{}{} // will wait here if channel blocked
 		<-p.pause             // clear channel
 	}
 }
