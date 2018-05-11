@@ -28,7 +28,6 @@ func New(maxWorkers int) *WorkerPool {
 		maxWorkers = 1
 	}
 
-	// taskQueue is unbuffered since items are always removed immediately.
 	pool := &WorkerPool{
 		taskQueue:    make(chan func(), 1),
 		maxWorkers:   maxWorkers,

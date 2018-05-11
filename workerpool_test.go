@@ -180,6 +180,29 @@ func TestSubmitWait(t *testing.T) {
 	}
 }
 
+func TestOverflow(t *testing.T) {
+	wp := New(2)
+	defer wp.Stop()
+	releaseChan := make(chan struct{})
+	defer close(releaseChan)
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < 64; i++ {
+		wp.Submit(func() { <-releaseChan })
+	}
+
+	// Wait plenty of time for dispatcher to queue last task, and check that
+	// all waiting tasks are in the waiting queue.
+	qlen := wp.waitingQueue.Len()
+	if qlen != 62 {
+		time.Sleep(time.Millisecond)
+		qlen = wp.waitingQueue.Len()
+	}
+	if qlen != 62 {
+		t.Fatal("Expecte 62 tasks in waiting queue, have", qlen)
+	}
+}
+
 func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
