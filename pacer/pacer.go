@@ -14,14 +14,15 @@ package pacer
 import "time"
 
 // Pacer is a goroutine rate limiter.  When concurrent goroutines call
-// Pacer.Next(), the call returns in one goroutine at a time, at a rate no
+// Pacer.Next(), the call returns in a single goroutine at a time, at a rate no
 // faster than one per delay time.
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
 // between the start of one task the start of the next task.  Then call Pace(),
 // passing your task function.  A new paced task function is returned that can
 // then be passed to WorkerPool's Submit() or SubmitWait(), or called as a go
-// routine.  Paced functions run as goroutines, are also paced.  For example:
+// routine.  Paced functions, that are run as goroutines, are also paced.  For
+// example:
 //
 //     pacer := pacer.NewPacer(time.Second)
 //

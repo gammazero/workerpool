@@ -236,6 +236,25 @@ func BenchmarkEnqueue(b *testing.B) {
 	close(releaseChan)
 }
 
+func BenchmarkEnqueue2(b *testing.B) {
+	wp := New(2)
+	defer wp.Stop()
+	releaseChan := make(chan struct{})
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		for i := 0; i < 64; i++ {
+			wp.Submit(func() { <-releaseChan })
+		}
+		for i := 0; i < 64; i++ {
+			releaseChan <- struct{}{}
+		}
+	}
+	close(releaseChan)
+}
+
 func BenchmarkExecute1Worker(b *testing.B) {
 	wp := New(1)
 	defer wp.Stop()
