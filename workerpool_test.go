@@ -186,20 +186,30 @@ func TestOverflow(t *testing.T) {
 	releaseChan := make(chan struct{})
 	defer close(releaseChan)
 
+	lastDone := make(chan struct{})
+
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < 64; i++ {
 		wp.Submit(func() { <-releaseChan })
 	}
-
-	// Wait plenty of time for dispatcher to queue last task, and check that
-	// all waiting tasks are in the waiting queue.
-	qlen := wp.waitingQueue.Len()
-	if qlen != 62 {
-		time.Sleep(time.Millisecond)
-		qlen = wp.waitingQueue.Len()
+	wp.Submit(func() { lastDone <- struct{}{} })
+	for i := 0; i < 62; i++ {
+		releaseChan <- struct{}{}
 	}
-	if qlen != 62 {
-		t.Fatal("Expecte 62 tasks in waiting queue, have", qlen)
+	// Two tasks should now be using up all the go routines.
+	select {
+	case <-lastDone:
+		t.Fatal("last task should still be waiting")
+	default:
+	}
+
+	// Freeing one more workershould let the task run.
+	releaseChan <- struct{}{}
+
+	select {
+	case <-lastDone:
+	case <-time.After(time.Second):
+		t.Fatal("last task did not all execute in time")
 	}
 }
 
