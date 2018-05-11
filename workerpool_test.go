@@ -30,7 +30,7 @@ func TestMaxWorkers(t *testing.T) {
 		})
 	}
 
-	// Wait for all enqueued tasks to be dispatched to workers.
+	// Wait for all queued tasks to be dispatched to workers.
 	timeout := time.After(5 * time.Second)
 	for startCount := 0; startCount < max; {
 		select {
@@ -90,7 +90,7 @@ func TestWorkerTimeout(t *testing.T) {
 	}
 
 	if anyReady(wp) {
-		t.Fatal("number of ready workers should ber zero")
+		t.Fatal("number of ready workers should be zero")
 	}
 	// Release workers.
 	close(sync)
@@ -129,7 +129,7 @@ func TestStop(t *testing.T) {
 		})
 	}
 
-	// Wait for all enqueued tasks to be dispatched to workers.
+	// Wait for all queued tasks to be dispatched to workers.
 	timeout := time.After(5 * time.Second)
 	for startCount := 0; startCount < max; {
 		select {
@@ -183,8 +183,6 @@ func TestSubmitWait(t *testing.T) {
 func TestOverflow(t *testing.T) {
 	wp := New(2)
 	releaseChan := make(chan struct{})
-
-	//lastDone := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < 64; i++ {

@@ -130,7 +130,7 @@ Loop:
 		// As long as tasks are in the waiting queue, remove and execute these
 		// tasks as workers become available, and place new incoming tasks on
 		// the queue.  Once the queue is empty, then go back to submitting
-		// incocoming tasks directly to available workers.
+		// incoming tasks directly to available workers.
 		if p.waitingQueue.Len() != 0 {
 			select {
 			case task, ok = <-p.taskQueue:
