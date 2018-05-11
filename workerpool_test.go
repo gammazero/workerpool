@@ -182,34 +182,29 @@ func TestSubmitWait(t *testing.T) {
 
 func TestOverflow(t *testing.T) {
 	wp := New(2)
-	defer wp.Stop()
 	releaseChan := make(chan struct{})
-	defer close(releaseChan)
 
-	lastDone := make(chan struct{})
+	//lastDone := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < 64; i++ {
 		wp.Submit(func() { <-releaseChan })
 	}
-	wp.Submit(func() { lastDone <- struct{}{} })
-	for i := 0; i < 62; i++ {
-		releaseChan <- struct{}{}
-	}
-	// Two tasks should now be using up all the go routines.
-	select {
-	case <-lastDone:
-		t.Fatal("last task should still be waiting")
-	default:
-	}
 
-	// Freeing one more workershould let the task run.
-	releaseChan <- struct{}{}
+	// Start a goroutine to free the workers after calling stop.  This way
+	// the dispatcher can exit, then when this goroutine runs, the workerpool
+	// can exit.
+	go func() {
+		<-time.After(time.Millisecond)
+		close(releaseChan)
+	}()
+	wp.Stop()
 
-	select {
-	case <-lastDone:
-	case <-time.After(time.Second):
-		t.Fatal("last task did not all execute in time")
+	// Now that the worker pool has exited, it is safe to inspect its waiting
+	// queue without causing a race.
+	qlen := wp.waitingQueue.Len()
+	if qlen != 62 {
+		t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
 	}
 }
 
