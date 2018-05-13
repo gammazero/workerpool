@@ -30,7 +30,7 @@ func TestMaxWorkers(t *testing.T) {
 		})
 	}
 
-	// Wait for all enqueued tasks to be dispatched to workers.
+	// Wait for all queued tasks to be dispatched to workers.
 	timeout := time.After(5 * time.Second)
 	for startCount := 0; startCount < max; {
 		select {
@@ -90,7 +90,7 @@ func TestWorkerTimeout(t *testing.T) {
 	}
 
 	if anyReady(wp) {
-		t.Fatal("number of ready workers should ber zero")
+		t.Fatal("number of ready workers should be zero")
 	}
 	// Release workers.
 	close(sync)
@@ -129,7 +129,7 @@ func TestStop(t *testing.T) {
 		})
 	}
 
-	// Wait for all enqueued tasks to be dispatched to workers.
+	// Wait for all queued tasks to be dispatched to workers.
 	timeout := time.After(5 * time.Second)
 	for startCount := 0; startCount < max; {
 		select {
@@ -177,6 +177,32 @@ func TestSubmitWait(t *testing.T) {
 	case <-done2:
 	default:
 		t.Fatal("SubmitWait did not wait for function to execute")
+	}
+}
+
+func TestOverflow(t *testing.T) {
+	wp := New(2)
+	releaseChan := make(chan struct{})
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < 64; i++ {
+		wp.Submit(func() { <-releaseChan })
+	}
+
+	// Start a goroutine to free the workers after calling stop.  This way
+	// the dispatcher can exit, then when this goroutine runs, the workerpool
+	// can exit.
+	go func() {
+		<-time.After(time.Millisecond)
+		close(releaseChan)
+	}()
+	wp.Stop()
+
+	// Now that the worker pool has exited, it is safe to inspect its waiting
+	// queue without causing a race.
+	qlen := wp.waitingQueue.Len()
+	if qlen != 62 {
+		t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
 	}
 }
 
@@ -232,6 +258,25 @@ func BenchmarkEnqueue(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() { <-releaseChan })
+	}
+	close(releaseChan)
+}
+
+func BenchmarkEnqueue2(b *testing.B) {
+	wp := New(2)
+	defer wp.Stop()
+	releaseChan := make(chan struct{})
+
+	b.ResetTimer()
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < b.N; i++ {
+		for i := 0; i < 64; i++ {
+			wp.Submit(func() { <-releaseChan })
+		}
+		for i := 0; i < 64; i++ {
+			releaseChan <- struct{}{}
+		}
 	}
 	close(releaseChan)
 }

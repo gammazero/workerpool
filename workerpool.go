@@ -1,6 +1,10 @@
 package workerpool
 
-import "time"
+import (
+	"time"
+
+	"github.com/gammazero/deque"
+)
 
 const (
 	// This value is the size of the queue that workers register their
@@ -24,9 +28,8 @@ func New(maxWorkers int) *WorkerPool {
 		maxWorkers = 1
 	}
 
-	// taskQueue is unbuffered since items are always removed immediately.
 	pool := &WorkerPool{
-		taskQueue:    make(chan func()),
+		taskQueue:    make(chan func(), 1),
 		maxWorkers:   maxWorkers,
 		readyWorkers: make(chan chan func(), readyQueueSize),
 		timeout:      time.Second * idleTimeoutSec,
@@ -47,6 +50,7 @@ type WorkerPool struct {
 	taskQueue    chan func()
 	readyWorkers chan chan func()
 	stoppedChan  chan struct{}
+	waitingQueue deque.Deque
 }
 
 // Stop stops the worker pool and waits for workers to complete.
@@ -83,6 +87,16 @@ func (p *WorkerPool) Stopped() bool {
 // be given to the next available worker.  If there are no available workers,
 // the dispatcher adds a worker, until the maximum number of workers is
 // running.
+//
+// After the maximum number of workers are running, and no workers are
+// available, incoming tasks are put onto a queue and will be executed as
+// workers become available.
+//
+// When no new tasks have been submitted for time period and a worker is
+// available, the worker is shutdown.  As long as no new tasks arrive, one
+// available worker is shutdown each time period until there are no more idle
+// workers.  Since the time to start new goroutines is not significant, there
+// is no need to retain idle workers.
 func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
 		p.taskQueue <- task
@@ -113,6 +127,23 @@ func (p *WorkerPool) dispatch() {
 	startReady := make(chan chan func())
 Loop:
 	for {
+		// As long as tasks are in the waiting queue, remove and execute these
+		// tasks as workers become available, and place new incoming tasks on
+		// the queue.  Once the queue is empty, then go back to submitting
+		// incoming tasks directly to available workers.
+		if p.waitingQueue.Len() != 0 {
+			select {
+			case task, ok = <-p.taskQueue:
+				if !ok {
+					break Loop
+				}
+				p.waitingQueue.PushBack(task)
+			case workerTaskChan = <-p.readyWorkers:
+				// A worker is ready, so give task to worker.
+				workerTaskChan <- p.waitingQueue.PopFront().(func())
+			}
+			continue
+		}
 		timeout.Reset(p.timeout)
 		select {
 		case task, ok = <-p.taskQueue:
@@ -136,12 +167,8 @@ Loop:
 						taskChan <- t
 					}(task)
 				} else {
-					// Start a goroutine to submit the task when an existing
-					// worker is ready.
-					go func(t func()) {
-						taskChan := <-p.readyWorkers
-						taskChan <- t
-					}(task)
+					// Enqueue the task to be executed by next available worker.
+					p.waitingQueue.PushBack(task)
 				}
 			}
 		case <-timeout.C:
