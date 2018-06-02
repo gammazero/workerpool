@@ -1,9 +1,9 @@
 /*
 Package workerpool queues work to a limited number of goroutines.
 
-The purpose of the worker pool is to limit the concurrency of the task
-performed by the workers.  This is useful when performing a task that requires
-sufficient resources (CPU, memory, etc.), that running too many tasks at the
+The purpose of the worker pool is to limit the concurrency of tasks
+executed by the workers.  This is useful when performing tasks that require
+sufficient resources (CPU, memory, etc.), and running too many tasks at the
 same time would exhaust resources.
 
 Non-blocking task submission
@@ -13,9 +13,9 @@ tasks to this worker pool will not block, regardless of the number of tasks.
 Tasks read from the input task queue are immediately dispatched to an available
 worker.  If no worker is immediately available, or there are already tasks
 waiting for an available worker, then the task is put on a waiting queue to
-wait for an available worker.  This clears the incoming task from the task
-queue immediately, whether or not a worker is currently available, and will not
-block the submission of tasks.
+wait for an available worker.  This clears the incoming task from the input
+task queue immediately, whether or not a worker is currently available, and
+will not block the submission of tasks.
 
 The intent of the worker pool is to limit the concurrency of task execution,
 not limit the number of tasks queued to be executed.  Therefore, this unbounded
