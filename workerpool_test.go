@@ -143,9 +143,17 @@ func TestStop(t *testing.T) {
 	// Release workers.
 	close(sync)
 
+	if wp.Stopped() {
+		t.Error("pool should not be stopped")
+	}
+
 	wp.Stop()
 	if anyReady(wp) {
-		t.Fatal("should have zero workers after stop")
+		t.Error("should have zero workers after stop")
+	}
+
+	if !wp.Stopped() {
+		t.Error("pool should be stopped")
 	}
 }
 
@@ -177,6 +185,32 @@ func TestSubmitWait(t *testing.T) {
 	case <-done2:
 	default:
 		t.Fatal("SubmitWait did not wait for function to execute")
+	}
+}
+
+func TestOverflow(t *testing.T) {
+	wp := New(2)
+	releaseChan := make(chan struct{})
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < 64; i++ {
+		wp.Submit(func() { <-releaseChan })
+	}
+
+	// Start a goroutine to free the workers after calling stop.  This way
+	// the dispatcher can exit, then when this goroutine runs, the workerpool
+	// can exit.
+	go func() {
+		<-time.After(time.Millisecond)
+		close(releaseChan)
+	}()
+	wp.Stop()
+
+	// Now that the worker pool has exited, it is safe to inspect its waiting
+	// queue without causing a race.
+	qlen := wp.waitingQueue.Len()
+	if qlen != 62 {
+		t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
 	}
 }
 
