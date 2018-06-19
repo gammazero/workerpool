@@ -1,9 +1,9 @@
 package workerpool
 
 import (
-	"time"
-
 	"github.com/gammazero/deque"
+	"sync"
+	"time"
 )
 
 const (
@@ -51,29 +51,34 @@ type WorkerPool struct {
 	readyWorkers chan chan func()
 	stoppedChan  chan struct{}
 	waitingQueue deque.Deque
+	stopMutex    sync.Mutex
+	stopped      bool
 }
 
-// Stop stops the worker pool and waits for workers to complete.
+// Stop stops the worker pool and waits for running tasks to complete.  Pending
+// tasks that are not currently running are abandoned.  Tasks must not be
+// submitted to the worker pool after calling stop.
 //
 // Since creating the worker pool starts at least one goroutine, for the
 // dispatcher, this function should be called when the worker pool is no longer
 // needed.
 func (p *WorkerPool) Stop() {
-	if p.Stopped() {
+	p.stopMutex.Lock()
+	defer p.stopMutex.Unlock()
+	if p.stopped {
 		return
 	}
+	p.stopped = true
+	// Close task queue and wait for currently running tasks to finish.
 	close(p.taskQueue)
 	<-p.stoppedChan
 }
 
 // Stopped returns true if this worker pool has been stopped.
 func (p *WorkerPool) Stopped() bool {
-	select {
-	case <-p.stoppedChan:
-		return true
-	default:
-	}
-	return false
+	p.stopMutex.Lock()
+	defer p.stopMutex.Unlock()
+	return p.stopped
 }
 
 // Submit enqueues a function for a worker to execute.

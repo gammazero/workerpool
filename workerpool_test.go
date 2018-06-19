@@ -180,30 +180,26 @@ func TestSubmitWait(t *testing.T) {
 	}
 }
 
-func TestOverflow(t *testing.T) {
-	wp := New(2)
+func TestStopRace(t *testing.T) {
+	wp := New(20)
 	releaseChan := make(chan struct{})
+	workRelChan := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < 20; i++ {
+		wp.Submit(func() { <-workRelChan })
+	}
+
+	time.Sleep(5 * time.Second)
 	for i := 0; i < 64; i++ {
-		wp.Submit(func() { <-releaseChan })
+		go func() {
+			<-releaseChan
+			wp.Stop()
+		}()
 	}
 
-	// Start a goroutine to free the workers after calling stop.  This way
-	// the dispatcher can exit, then when this goroutine runs, the workerpool
-	// can exit.
-	go func() {
-		<-time.After(time.Millisecond)
-		close(releaseChan)
-	}()
-	wp.Stop()
-
-	// Now that the worker pool has exited, it is safe to inspect its waiting
-	// queue without causing a race.
-	qlen := wp.waitingQueue.Len()
-	if qlen != 62 {
-		t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
-	}
+	close(workRelChan)
+	close(releaseChan)
 }
 
 func anyReady(w *WorkerPool) bool {
