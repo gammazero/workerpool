@@ -143,9 +143,17 @@ func TestStop(t *testing.T) {
 	// Release workers.
 	close(sync)
 
+	if wp.Stopped() {
+		t.Error("pool should not be stopped")
+	}
+
 	wp.Stop()
 	if anyReady(wp) {
-		t.Fatal("should have zero workers after stop")
+		t.Error("should have zero workers after stop")
+	}
+
+	if !wp.Stopped() {
+		t.Error("pool should be stopped")
 	}
 }
 
@@ -204,6 +212,28 @@ func TestOverflow(t *testing.T) {
 	if qlen != 62 {
 		t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
 	}
+}
+
+func TestStopRace(t *testing.T) {
+	wp := New(20)
+	releaseChan := make(chan struct{})
+	workRelChan := make(chan struct{})
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < 20; i++ {
+		wp.Submit(func() { <-workRelChan })
+	}
+
+	time.Sleep(5 * time.Second)
+	for i := 0; i < 64; i++ {
+		go func() {
+			<-releaseChan
+			wp.Stop()
+		}()
+	}
+
+	close(workRelChan)
+	close(releaseChan)
 }
 
 func anyReady(w *WorkerPool) bool {
