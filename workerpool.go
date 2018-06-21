@@ -55,23 +55,22 @@ type WorkerPool struct {
 	stopped      bool
 }
 
-// Stop stops the worker pool and waits for running tasks to complete.  Pending
-// tasks that are not currently running are abandoned.  Tasks must not be
-// submitted to the worker pool after calling stop.
+// Stop stops the worker pool and waits for only currently running tasks to
+// complete.  Pending tasks that are not currently running are abandoned.
+// Tasks must not be submitted to the worker pool after calling stop.
 //
 // Since creating the worker pool starts at least one goroutine, for the
-// dispatcher, this function should be called when the worker pool is no longer
-// needed.
+// dispatcher, Stop() or StopWait() should be called when the worker pool is no
+// longer needed.
 func (p *WorkerPool) Stop() {
-	p.stopMutex.Lock()
-	defer p.stopMutex.Unlock()
-	if p.stopped {
-		return
-	}
-	p.stopped = true
-	// Close task queue and wait for currently running tasks to finish.
-	close(p.taskQueue)
-	<-p.stoppedChan
+	p.stop(false)
+}
+
+// StopWait stops the worker pool and waits for all queued tasks tasks to
+// complete.  No additional tasks may be submitted, but all pending tasks are
+// executed by workers before this function returns.
+func (p *WorkerPool) StopWait() {
+	p.stop(true)
 }
 
 // Stopped returns true if this worker pool has been stopped.
@@ -125,10 +124,12 @@ func (p *WorkerPool) SubmitWait(task func()) {
 func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(p.timeout)
-	var workerCount int
-	var task func()
-	var ok bool
-	var workerTaskChan chan func()
+	var (
+		workerCount    int
+		task           func()
+		ok, wait       bool
+		workerTaskChan chan func()
+	)
 	startReady := make(chan chan func())
 Loop:
 	for {
@@ -142,6 +143,10 @@ Loop:
 				if !ok {
 					break Loop
 				}
+				if task == nil {
+					wait = true
+					break Loop
+				}
 				p.waitingQueue.PushBack(task)
 			case workerTaskChan = <-p.readyWorkers:
 				// A worker is ready, so give task to worker.
@@ -152,7 +157,7 @@ Loop:
 		timeout.Reset(p.timeout)
 		select {
 		case task, ok = <-p.taskQueue:
-			if !ok {
+			if !ok || task == nil {
 				break Loop
 			}
 			// Got a task to do.
@@ -172,7 +177,7 @@ Loop:
 						taskChan <- t
 					}(task)
 				} else {
-					// Enqueue the task to be executed by next available worker.
+					// Enqueue task to be executed by next available worker.
 					p.waitingQueue.PushBack(task)
 				}
 			}
@@ -188,6 +193,16 @@ Loop:
 					// No work, but no ready workers.  All workers are busy.
 				}
 			}
+		}
+	}
+
+	// If instructed to wait for all queued tasks, then remove from queue and
+	// give to workers until queue is empty.
+	if wait {
+		for p.waitingQueue.Len() != 0 {
+			workerTaskChan = <-p.readyWorkers
+			// A worker is ready, so give task to worker.
+			workerTaskChan <- p.waitingQueue.PopFront().(func())
 		}
 	}
 
@@ -236,4 +251,21 @@ func startWorker(startReady, readyWorkers chan chan func()) {
 			readyWorkers <- taskChan
 		}
 	}()
+}
+
+// stop tells the dispatcher to exit, and whether or not to complete queued
+// tasks.
+func (p *WorkerPool) stop(wait bool) {
+	p.stopMutex.Lock()
+	defer p.stopMutex.Unlock()
+	if p.stopped {
+		return
+	}
+	p.stopped = true
+	if wait {
+		p.taskQueue <- nil
+	}
+	// Close task queue and wait for currently running tasks to finish.
+	close(p.taskQueue)
+	<-p.stoppedChan
 }

@@ -155,6 +155,88 @@ func TestStop(t *testing.T) {
 	if !wp.Stopped() {
 		t.Error("pool should be stopped")
 	}
+
+	// Start workers, and have them all wait on a channel before completing.
+	wp = New(5)
+	sync = make(chan struct{})
+	finished := make(chan struct{}, max)
+	for i := 0; i < max; i++ {
+		wp.Submit(func() {
+			<-sync
+			finished <- struct{}{}
+		})
+	}
+
+	// Call Stop() and see that only the already running tasks were completed.
+	go func() {
+		time.Sleep(10000 * time.Millisecond)
+		close(sync)
+	}()
+	wp.Stop()
+	var count int
+Count:
+	for count < max {
+		select {
+		case <-finished:
+			count++
+		default:
+			break Count
+		}
+	}
+	if count > 5 {
+		t.Error("Should not have completed any queued tasks, did", count)
+	}
+
+	// Check that calling Stop() againg is OK.
+	wp.Stop()
+}
+
+func TestStopWait(t *testing.T) {
+	t.Parallel()
+
+	// Start workers, and have them all wait on a channel before completing.
+	wp := New(5)
+	sync := make(chan struct{})
+	finished := make(chan struct{}, max)
+	for i := 0; i < max; i++ {
+		wp.Submit(func() {
+			<-sync
+			finished <- struct{}{}
+		})
+	}
+
+	// Call StopWait() and see that all tasks were completed.
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(sync)
+	}()
+	wp.StopWait()
+	for count := 0; count < max; count++ {
+		select {
+		case <-finished:
+		default:
+			t.Error("Should have completed all queued tasks")
+		}
+	}
+
+	if anyReady(wp) {
+		t.Error("should have zero workers after stopwait")
+	}
+
+	if !wp.Stopped() {
+		t.Error("pool should be stopped")
+	}
+
+	// Make sure that calling StopWait() with no queued tasks is OK.
+	wp = New(5)
+	wp.StopWait()
+
+	if anyReady(wp) {
+		t.Error("should have zero workers after stopwait")
+	}
+
+	// Check that calling StopWait() againg is OK.
+	wp.StopWait()
 }
 
 func TestSubmitWait(t *testing.T) {
