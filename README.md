@@ -39,6 +39,6 @@ func main() {
 		})
 	}
 
-	wp.Stop()
+	wp.StopWait()
 }
 ```
