@@ -274,13 +274,3 @@ func (p *WorkerPool) stop(wait bool) {
 func (p *WorkerPool) WaitingQueueSize() int {
 	return p.waitingQueue.Len()
 }
-
-// TaksQueueSize will return the size of task queue
-func (p *WorkerPool) TaksQueueSize() int {
-	return len(p.taskQueue)
-}
-
-// QueueSize will return the size of the task queue first and waiting queue second
-func (p *WorkerPool) QueueSize() (int, int) {
-	return len(p.taskQueue), p.waitingQueue.Len()
-}
