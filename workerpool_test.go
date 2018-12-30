@@ -61,6 +61,10 @@ func TestMaxWorkers(t *testing.T) {
 
 	// Wait for all queued tasks to be dispatched to workers.
 	timeout := time.After(5 * time.Second)
+	if wp.waitingQueue.Len() != wp.WaitingQueueSize() {
+		t.Fatal("Working Queue size returned should not be 0")
+		panic("WRONG")
+	}
 	for startCount := 0; startCount < max; {
 		select {
 		case <-started:
