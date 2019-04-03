@@ -32,7 +32,7 @@ func TestExample(t *testing.T) {
 	}
 	for _, req := range requests {
 		if _, ok := rspSet[req]; !ok {
-			t.Fatal("Missing expected valus:", req)
+			t.Fatal("Missing expected values:", req)
 		}
 	}
 }
