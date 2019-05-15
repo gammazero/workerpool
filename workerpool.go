@@ -89,14 +89,14 @@ func (p *WorkerPool) Stopped() bool {
 // Submit will not block regardless of the number of tasks submitted.  Each
 // task is immediately given to an available worker or passed to a goroutine to
 // be given to the next available worker.  If there are no available workers,
-// the dispatcher adds a worker, until the maximum number of workers is
+// the dispatcher adds a worker, until the maximum number of workers are
 // running.
 //
 // After the maximum number of workers are running, and no workers are
 // available, incoming tasks are put onto a queue and will be executed as
 // workers become available.
 //
-// When no new tasks have been submitted for time period and a worker is
+// When no new tasks have been submitted for a time period and a worker is
 // available, the worker is shutdown.  As long as no new tasks arrive, one
 // available worker is shutdown each time period until there are no more idle
 // workers.  Since the time to start new goroutines is not significant, there
@@ -118,6 +118,11 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		close(doneChan)
 	}
 	<-doneChan
+}
+
+// WaitingQueueSize will return the size of the waiting queue
+func (p *WorkerPool) WaitingQueueSize() int {
+	return p.waitingQueue.Len()
 }
 
 // dispatch sends the next queued task to an available worker.
@@ -268,9 +273,4 @@ func (p *WorkerPool) stop(wait bool) {
 	// Close task queue and wait for currently running tasks to finish.
 	close(p.taskQueue)
 	<-p.stoppedChan
-}
-
-// WaitingQueueSize will return the size of the waiting queue
-func (p *WorkerPool) WaitingQueueSize() int {
-	return p.waitingQueue.Len()
 }
