@@ -351,6 +351,34 @@ func TestStopRace(t *testing.T) {
 	close(releaseChan)
 }
 
+func TestWaitingQueueSizeRace(t *testing.T) {
+	const maxQueueSize = 1
+	wp := New(1)
+	workRelChan := make(chan struct{})
+	errChan := make(chan bool, 3)
+
+	go func() {
+		for i := 0; i < 3; i++ {
+			// Submit a new task only if # waiting in the queue is at maxQueueSize or more
+			if wp.WaitingQueueSize() > maxQueueSize-1 {
+				errChan <- true
+				continue
+			}
+			wp.Submit(func() { <-workRelChan })
+		}
+		close(errChan)
+	}()
+
+	ct := 0
+	for range errChan {
+		ct++
+	}
+	if ct != 1 {
+		t.Fatal("Expected 1 task to be rejected due to # of tasks in queue", ct)
+	}
+	close(workRelChan)
+}
+
 func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
