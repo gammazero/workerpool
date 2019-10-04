@@ -365,6 +365,10 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 				continue
 			}
 			wp.Submit(func() { <-workRelChan })
+			// Wait for task to be removed from task queue.
+			for len(wp.taskQueue) != 0 {
+				time.Sleep(time.Microsecond)
+			}
 		}
 		close(errChan)
 	}()
