@@ -3,6 +3,7 @@ package workerpool
 import (
 	"github.com/gammazero/deque"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -53,6 +54,7 @@ type WorkerPool struct {
 	waitingQueue deque.Deque
 	stopMutex    sync.Mutex
 	stopped      bool
+	waiting      int32
 }
 
 // Stop stops the worker pool and waits for only currently running tasks to
@@ -122,7 +124,7 @@ func (p *WorkerPool) SubmitWait(task func()) {
 
 // WaitingQueueSize will return the size of the waiting queue
 func (p *WorkerPool) WaitingQueueSize() int {
-	return p.waitingQueue.Len()
+	return int(atomic.LoadInt32(&p.waiting))
 }
 
 // dispatch sends the next queued task to an available worker.
@@ -157,6 +159,7 @@ Loop:
 				// A worker is ready, so give task to worker.
 				workerTaskChan <- p.waitingQueue.PopFront().(func())
 			}
+			atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 			continue
 		}
 		timeout.Reset(p.timeout)
@@ -184,6 +187,7 @@ Loop:
 				} else {
 					// Enqueue task to be executed by next available worker.
 					p.waitingQueue.PushBack(task)
+					atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 				}
 			}
 		case <-timeout.C:
@@ -208,6 +212,7 @@ Loop:
 			workerTaskChan = <-p.readyWorkers
 			// A worker is ready, so give task to worker.
 			workerTaskChan <- p.waitingQueue.PopFront().(func())
+			atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 		}
 	}
 
