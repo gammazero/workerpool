@@ -52,8 +52,8 @@ type WorkerPool struct {
 	readyWorkers chan chan func()
 	stoppedChan  chan struct{}
 	waitingQueue deque.Deque
-	stopMutex    sync.Mutex
-	stopped      bool
+	stopOnce     sync.Once
+	stopped      int32
 	waiting      int32
 }
 
@@ -77,9 +77,7 @@ func (p *WorkerPool) StopWait() {
 
 // Stopped returns true if this worker pool has been stopped.
 func (p *WorkerPool) Stopped() bool {
-	p.stopMutex.Lock()
-	defer p.stopMutex.Unlock()
-	return p.stopped
+	return atomic.LoadInt32(&p.stopped) != 0
 }
 
 // Submit enqueues a function for a worker to execute.
@@ -266,16 +264,13 @@ func startWorker(startReady, readyWorkers chan chan func()) {
 // stop tells the dispatcher to exit, and whether or not to complete queued
 // tasks.
 func (p *WorkerPool) stop(wait bool) {
-	p.stopMutex.Lock()
-	defer p.stopMutex.Unlock()
-	if p.stopped {
-		return
-	}
-	p.stopped = true
-	if wait {
-		p.taskQueue <- nil
-	}
-	// Close task queue and wait for currently running tasks to finish.
-	close(p.taskQueue)
-	<-p.stoppedChan
+	p.stopOnce.Do(func() {
+		atomic.StoreInt32(&p.stopped, 1)
+		if wait {
+			p.taskQueue <- nil
+		}
+		// Close task queue and wait for currently running tasks to finish.
+		close(p.taskQueue)
+		<-p.stoppedChan
+	})
 }
