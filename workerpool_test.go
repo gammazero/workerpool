@@ -351,36 +351,48 @@ func TestStopRace(t *testing.T) {
 	close(releaseChan)
 }
 
+// Run this test with race detector to test that using WaitingQueueSize has no
+// race condition
 func TestWaitingQueueSizeRace(t *testing.T) {
-	const maxQueueSize = 1
-	wp := New(1)
-	workRelChan := make(chan struct{})
-	errChan := make(chan bool, 3)
+	const (
+		goroutines = 10
+		tasks      = 20
+		workers    = 5
+	)
+	wp := New(workers)
+	maxChan := make(chan int)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			max := 0
+			// Submit 100 tasks, checking waiting queue size each time.  Report
+			// the maximum queue size seen.
+			for i := 0; i < tasks; i++ {
+				wp.Submit(func() {
+					time.Sleep(time.Microsecond)
+				})
+				waiting := wp.WaitingQueueSize()
+				if waiting > max {
+					max = waiting
+				}
+			}
+			maxChan <- max
+		}()
+	}
 
-	go func() {
-		for i := 0; i < 3; i++ {
-			// Submit a new task only if # waiting in the queue is at maxQueueSize or more
-			if wp.WaitingQueueSize() > maxQueueSize-1 {
-				errChan <- true
-				continue
-			}
-			wp.Submit(func() { <-workRelChan })
-			// Wait for task to be removed from task queue.
-			for len(wp.taskQueue) != 0 {
-				time.Sleep(time.Microsecond)
-			}
+	// Find maximum queuesize seen by any thread.
+	maxMax := 0
+	for g := 0; g < goroutines; g++ {
+		max := <-maxChan
+		if max > maxMax {
+			maxMax = max
 		}
-		close(errChan)
-	}()
-
-	ct := 0
-	for range errChan {
-		ct++
 	}
-	if ct != 1 {
-		t.Fatal("Expected 1 task to be rejected due to # of tasks in queue", ct)
+	if maxMax == 0 {
+		t.Error("expected to see waiting queue size > 0")
 	}
-	close(workRelChan)
+	if maxMax >= goroutines*tasks {
+		t.Error("should not have seen all tasks on waiting queue")
+	}
 }
 
 func anyReady(w *WorkerPool) bool {
