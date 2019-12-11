@@ -351,6 +351,50 @@ func TestStopRace(t *testing.T) {
 	close(releaseChan)
 }
 
+// Run this test with race detector to test that using WaitingQueueSize has no
+// race condition
+func TestWaitingQueueSizeRace(t *testing.T) {
+	const (
+		goroutines = 10
+		tasks      = 20
+		workers    = 5
+	)
+	wp := New(workers)
+	maxChan := make(chan int)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			max := 0
+			// Submit 100 tasks, checking waiting queue size each time.  Report
+			// the maximum queue size seen.
+			for i := 0; i < tasks; i++ {
+				wp.Submit(func() {
+					time.Sleep(time.Microsecond)
+				})
+				waiting := wp.WaitingQueueSize()
+				if waiting > max {
+					max = waiting
+				}
+			}
+			maxChan <- max
+		}()
+	}
+
+	// Find maximum queuesize seen by any thread.
+	maxMax := 0
+	for g := 0; g < goroutines; g++ {
+		max := <-maxChan
+		if max > maxMax {
+			maxMax = max
+		}
+	}
+	if maxMax == 0 {
+		t.Error("expected to see waiting queue size > 0")
+	}
+	if maxMax >= goroutines*tasks {
+		t.Error("should not have seen all tasks on waiting queue")
+	}
+}
+
 func anyReady(w *WorkerPool) bool {
 	select {
 	case wkCh := <-w.readyWorkers:
