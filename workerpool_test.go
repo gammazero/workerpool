@@ -177,16 +177,16 @@ func TestStop(t *testing.T) {
 	close(sync)
 
 	if wp.Stopped() {
-		t.Error("pool should not be stopped")
+		t.Fatal("pool should not be stopped")
 	}
 
 	wp.Stop()
 	if anyReady(wp) {
-		t.Error("should have zero workers after stop")
+		t.Fatal("should have zero workers after stop")
 	}
 
 	if !wp.Stopped() {
-		t.Error("pool should be stopped")
+		t.Fatal("pool should be stopped")
 	}
 
 	// Start workers, and have them all wait on a channel before completing.
@@ -217,10 +217,10 @@ Count:
 		}
 	}
 	if count > 5 {
-		t.Error("Should not have completed any queued tasks, did", count)
+		t.Fatal("Should not have completed any queued tasks, did", count)
 	}
 
-	// Check that calling Stop() againg is OK.
+	// Check that calling Stop() again is OK.
 	wp.Stop()
 }
 
@@ -248,16 +248,16 @@ func TestStopWait(t *testing.T) {
 		select {
 		case <-finished:
 		default:
-			t.Error("Should have completed all queued tasks")
+			t.Fatal("Should have completed all queued tasks")
 		}
 	}
 
 	if anyReady(wp) {
-		t.Error("should have zero workers after stopwait")
+		t.Fatal("should have zero workers after stopwait")
 	}
 
 	if !wp.Stopped() {
-		t.Error("pool should be stopped")
+		t.Fatal("pool should be stopped")
 	}
 
 	// Make sure that calling StopWait() with no queued tasks is OK.
@@ -265,10 +265,10 @@ func TestStopWait(t *testing.T) {
 	wp.StopWait()
 
 	if anyReady(wp) {
-		t.Error("should have zero workers after stopwait")
+		t.Fatal("should have zero workers after stopwait")
 	}
 
-	// Check that calling StopWait() againg is OK.
+	// Check that calling StopWait() again is OK.
 	wp.StopWait()
 }
 
