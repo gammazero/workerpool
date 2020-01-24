@@ -1,5 +1,5 @@
 # workerpool
-[![Build Status](https://travis-ci.org/gammazero/workerpool.svg)](https://travis-ci.org/gammazero/workerpool)
+[![Build Status](https://travis-ci.com/gammazero/workerpool.svg)](https://travis-ci.org/gammazero/workerpool)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gammazero/workerpool)](https://goreportcard.com/report/github.com/gammazero/workerpool)
 [![codecov](https://codecov.io/gh/gammazero/workerpool/branch/master/graph/badge.svg)](https://codecov.io/gh/gammazero/workerpool)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/gammazero/workerpool/blob/master/LICENSE)
