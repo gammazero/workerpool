@@ -241,17 +241,10 @@ func startWorker(startReady, readyWorkers chan chan func()) {
 	go func() {
 		taskChan := make(chan func())
 		var task func()
-		var ok bool
 		// Register availability on starReady channel.
 		startReady <- taskChan
-		for {
-			// Read task from dispatcher.
-			task, ok = <-taskChan
-			if !ok {
-				// Dispatcher has told worker to stop.
-				break
-			}
-
+		// Read tasks from dispatcher.
+		for task = range taskChan {
 			// Execute the task.
 			task()
 
