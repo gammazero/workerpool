@@ -475,7 +475,6 @@ func BenchmarkExecute1Worker(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() {
-			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
@@ -493,7 +492,6 @@ func BenchmarkExecute2Worker(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() {
-			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
@@ -511,7 +509,6 @@ func BenchmarkExecute4Workers(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() {
-			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
@@ -529,7 +526,6 @@ func BenchmarkExecute16Workers(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() {
-			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
@@ -547,7 +543,6 @@ func BenchmarkExecute64Workers(b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		wp.Submit(func() {
-			time.Sleep(time.Millisecond)
 			allDone.Done()
 		})
 	}
