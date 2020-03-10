@@ -397,8 +397,8 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 
 func anyReady(w *WorkerPool) bool {
 	select {
-	case wkCh := <-w.readyWorkers:
-		w.readyWorkers <- wkCh
+	case w.workerQueue <- nil:
+		go startWorker(w.workerQueue)
 		return true
 	default:
 	}
@@ -406,14 +406,12 @@ func anyReady(w *WorkerPool) bool {
 }
 
 func countReady(w *WorkerPool) int {
-	// Try to pull max workers off of ready queue.
+	// Try to stop max workers.
 	timeout := time.After(5 * time.Second)
-	readyTmp := make(chan chan func(), max)
 	var readyCount int
 	for i := 0; i < max; i++ {
 		select {
-		case wkCh := <-w.readyWorkers:
-			readyTmp <- wkCh
+		case w.workerQueue <- nil:
 			readyCount++
 		case <-timeout:
 			readyCount = i
@@ -421,13 +419,10 @@ func countReady(w *WorkerPool) int {
 		}
 	}
 
-	// Restore ready workers.
-	close(readyTmp)
-	go func() {
-		for r := range readyTmp {
-			w.readyWorkers <- r
-		}
-	}()
+	// Restore workers.
+	for i := 0; i < readyCount; i++ {
+		go startWorker(w.workerQueue)
+	}
 	return readyCount
 }
 
