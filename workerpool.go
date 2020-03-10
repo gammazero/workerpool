@@ -50,6 +50,7 @@ type WorkerPool struct {
 	stopOnce     sync.Once
 	stopped      int32
 	waiting      int32
+	wait         bool
 }
 
 // Stop stops the worker pool and waits for only currently running tasks to
@@ -127,7 +128,7 @@ func (p *WorkerPool) dispatch() {
 	var (
 		workerCount int
 		task        func()
-		ok, wait    bool
+		ok          bool
 	)
 Loop:
 	for {
@@ -141,10 +142,6 @@ Loop:
 				if !ok {
 					break Loop
 				}
-				if task == nil {
-					wait = true
-					break Loop
-				}
 				p.waitingQueue.PushBack(task)
 			case p.workerQueue <- p.waitingQueue.Front().(func()):
 				// A worker was ready, so gave task to worker.
@@ -156,7 +153,7 @@ Loop:
 		timeout.Reset(p.timeout)
 		select {
 		case task, ok = <-p.taskQueue:
-			if !ok || task == nil {
+			if !ok {
 				break Loop
 			}
 			// Got a task to do.
@@ -194,7 +191,7 @@ Loop:
 
 	// If instructed to wait for all queued tasks, then remove from queue and
 	// give to workers until queue is empty.
-	if wait {
+	if p.wait {
 		for p.waitingQueue.Len() != 0 {
 			// A worker is ready, so give task to worker.
 			p.workerQueue <- p.waitingQueue.PopFront().(func())
@@ -227,9 +224,7 @@ func startWorker(workerQueue chan func()) {
 func (p *WorkerPool) stop(wait bool) {
 	p.stopOnce.Do(func() {
 		atomic.StoreInt32(&p.stopped, 1)
-		if wait {
-			p.taskQueue <- nil
-		}
+		p.wait = wait
 		// Close task queue and wait for currently running tasks to finish.
 		close(p.taskQueue)
 		<-p.stoppedChan

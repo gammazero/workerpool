@@ -63,7 +63,6 @@ func TestMaxWorkers(t *testing.T) {
 	timeout := time.After(5 * time.Second)
 	if wp.waitingQueue.Len() != wp.WaitingQueueSize() {
 		t.Fatal("Working Queue size returned should not be 0")
-		panic("WRONG")
 	}
 	for startCount := 0; startCount < max; {
 		select {
