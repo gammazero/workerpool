@@ -8,11 +8,6 @@ import (
 )
 
 const (
-	// This value is the size of the queue that workers register their
-	// availability to the dispatcher.  There may be hundreds of workers, but
-	// only a small channel is needed to register some of the workers.
-	readyQueueSize = 16
-
 	// If worker pool receives no new work for this period of time, then stop
 	// a worker goroutine.
 	idleTimeoutSec = 5
@@ -30,11 +25,11 @@ func New(maxWorkers int) *WorkerPool {
 	}
 
 	pool := &WorkerPool{
-		taskQueue:    make(chan func(), 1),
-		maxWorkers:   maxWorkers,
-		readyWorkers: make(chan chan func(), readyQueueSize),
-		timeout:      time.Second * idleTimeoutSec,
-		stoppedChan:  make(chan struct{}),
+		maxWorkers:  maxWorkers,
+		timeout:     time.Second * idleTimeoutSec,
+		taskQueue:   make(chan func(), 1),
+		workerQueue: make(chan func()),
+		stoppedChan: make(chan struct{}),
 	}
 
 	// Start the task dispatcher.
@@ -49,12 +44,13 @@ type WorkerPool struct {
 	maxWorkers   int
 	timeout      time.Duration
 	taskQueue    chan func()
-	readyWorkers chan chan func()
+	workerQueue  chan func()
 	stoppedChan  chan struct{}
 	waitingQueue deque.Deque
 	stopOnce     sync.Once
 	stopped      int32
 	waiting      int32
+	wait         bool
 }
 
 // Stop stops the worker pool and waits for only currently running tasks to
@@ -130,12 +126,10 @@ func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(p.timeout)
 	var (
-		workerCount    int
-		task           func()
-		ok, wait       bool
-		workerTaskChan chan func()
+		workerCount int
+		task        func()
+		ok          bool
 	)
-	startReady := make(chan chan func())
 Loop:
 	for {
 		// As long as tasks are in the waiting queue, remove and execute these
@@ -148,14 +142,10 @@ Loop:
 				if !ok {
 					break Loop
 				}
-				if task == nil {
-					wait = true
-					break Loop
-				}
 				p.waitingQueue.PushBack(task)
-			case workerTaskChan = <-p.readyWorkers:
-				// A worker is ready, so give task to worker.
-				workerTaskChan <- p.waitingQueue.PopFront().(func())
+			case p.workerQueue <- p.waitingQueue.Front().(func()):
+				// A worker was ready, so gave task to worker.
+				p.waitingQueue.PopFront()
 			}
 			atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 			continue
@@ -163,24 +153,21 @@ Loop:
 		timeout.Reset(p.timeout)
 		select {
 		case task, ok = <-p.taskQueue:
-			if !ok || task == nil {
+			if !ok {
 				break Loop
 			}
 			// Got a task to do.
 			select {
-			case workerTaskChan = <-p.readyWorkers:
-				// A worker is ready, so give task to worker.
-				workerTaskChan <- task
+			case p.workerQueue <- task:
 			default:
 				// No workers ready.
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
 					workerCount++
 					go func(t func()) {
-						startWorker(startReady, p.readyWorkers)
-						// Submit the task when the new worker.
-						taskChan := <-startReady
-						taskChan <- t
+						// Run initial task and start worker waiting for more.
+						t()
+						go startWorker(p.workerQueue)
 					}(task)
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -192,9 +179,8 @@ Loop:
 			// Timed out waiting for work to arrive.  Kill a ready worker.
 			if workerCount > 0 {
 				select {
-				case workerTaskChan = <-p.readyWorkers:
-					// A worker is ready, so kill.
-					close(workerTaskChan)
+				case p.workerQueue <- nil:
+					// Send kill signal to worker.
 					workerCount--
 				default:
 					// No work, but no ready workers.  All workers are busy.
@@ -205,53 +191,32 @@ Loop:
 
 	// If instructed to wait for all queued tasks, then remove from queue and
 	// give to workers until queue is empty.
-	if wait {
+	if p.wait {
 		for p.waitingQueue.Len() != 0 {
-			workerTaskChan = <-p.readyWorkers
 			// A worker is ready, so give task to worker.
-			workerTaskChan <- p.waitingQueue.PopFront().(func())
+			p.workerQueue <- p.waitingQueue.PopFront().(func())
 			atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 		}
 	}
 
 	// Stop all remaining workers as they become ready.
 	for workerCount > 0 {
-		workerTaskChan = <-p.readyWorkers
-		close(workerTaskChan)
+		p.workerQueue <- nil
 		workerCount--
 	}
 }
 
 // startWorker starts a goroutine that executes tasks given by the dispatcher.
 //
-// When a new worker starts, it registers its availability on the startReady
-// channel.  This ensures that the goroutine associated with starting the
-// worker gets to use the worker to execute its task.  Otherwise, the main
-// dispatcher loop could steal the new worker and not know to start up another
-// worker for the waiting goroutine.  The task would then have to wait for
-// another existing worker to become available, even though capacity is
-// available to start additional workers.
-//
-// A worker registers that is it available to do work by putting its task
-// channel on the readyWorkers channel.  The dispatcher reads a worker's task
-// channel from the readyWorkers channel, and writes a task to the worker over
-// the worker's task channel.  To stop a worker, the dispatcher closes a
-// worker's task channel, instead of writing a task to it.
-func startWorker(startReady, readyWorkers chan chan func()) {
-	go func() {
-		taskChan := make(chan func())
-		var task func()
-		// Register availability on starReady channel.
-		startReady <- taskChan
-		// Read tasks from dispatcher.
-		for task = range taskChan {
-			// Execute the task.
-			task()
-
-			// Register availability on readyWorkers channel.
-			readyWorkers <- taskChan
+// To stop a worker, the dispatcher writes nil to the worker task queue.
+func startWorker(workerQueue chan func()) {
+	// Read tasks from dispatcher and execute.
+	for task := range workerQueue {
+		if task == nil {
+			return
 		}
-	}()
+		task()
+	}
 }
 
 // stop tells the dispatcher to exit, and whether or not to complete queued
@@ -259,9 +224,7 @@ func startWorker(startReady, readyWorkers chan chan func()) {
 func (p *WorkerPool) stop(wait bool) {
 	p.stopOnce.Do(func() {
 		atomic.StoreInt32(&p.stopped, 1)
-		if wait {
-			p.taskQueue <- nil
-		}
+		p.wait = wait
 		// Close task queue and wait for currently running tasks to finish.
 		close(p.taskQueue)
 		<-p.stoppedChan
