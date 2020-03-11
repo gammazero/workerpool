@@ -448,103 +448,59 @@ func BenchmarkEnqueue(b *testing.B) {
 func BenchmarkEnqueue2(b *testing.B) {
 	wp := New(2)
 	defer wp.Stop()
-	releaseChan := make(chan struct{})
 
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
+		releaseChan := make(chan struct{})
 		for i := 0; i < 64; i++ {
 			wp.Submit(func() { <-releaseChan })
 		}
-		for i := 0; i < 64; i++ {
-			releaseChan <- struct{}{}
-		}
+		close(releaseChan)
 	}
-	close(releaseChan)
 }
 
 func BenchmarkExecute1Worker(b *testing.B) {
-	wp := New(1)
-	defer wp.Stop()
-	var allDone sync.WaitGroup
-	allDone.Add(b.N)
-
-	b.ResetTimer()
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {
-			allDone.Done()
-		})
-	}
-	allDone.Wait()
+	benchmarkExecWorkers(1, b)
 }
 
 func BenchmarkExecute2Worker(b *testing.B) {
-	wp := New(2)
-	defer wp.Stop()
-	var allDone sync.WaitGroup
-	allDone.Add(b.N)
-
-	b.ResetTimer()
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {
-			allDone.Done()
-		})
-	}
-	allDone.Wait()
+	benchmarkExecWorkers(2, b)
 }
 
 func BenchmarkExecute4Workers(b *testing.B) {
-	wp := New(4)
-	defer wp.Stop()
-	var allDone sync.WaitGroup
-	allDone.Add(b.N)
-
-	b.ResetTimer()
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {
-			allDone.Done()
-		})
-	}
-	allDone.Wait()
+	benchmarkExecWorkers(4, b)
 }
 
 func BenchmarkExecute16Workers(b *testing.B) {
-	wp := New(16)
-	defer wp.Stop()
-	var allDone sync.WaitGroup
-	allDone.Add(b.N)
-
-	b.ResetTimer()
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {
-			allDone.Done()
-		})
-	}
-	allDone.Wait()
+	benchmarkExecWorkers(16, b)
 }
 
 func BenchmarkExecute64Workers(b *testing.B) {
-	wp := New(64)
+	benchmarkExecWorkers(64, b)
+}
+
+func BenchmarkExecute1024Workers(b *testing.B) {
+	benchmarkExecWorkers(1024, b)
+}
+
+func benchmarkExecWorkers(n int, b *testing.B) {
+	wp := New(n)
 	defer wp.Stop()
 	var allDone sync.WaitGroup
-	allDone.Add(b.N)
+	allDone.Add(b.N * n)
 
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
-		wp.Submit(func() {
-			allDone.Done()
-		})
+		for j := 0; j < n; j++ {
+			wp.Submit(func() {
+				//time.Sleep(100 * time.Microsecond)
+				allDone.Done()
+			})
+		}
 	}
 	allDone.Wait()
 }
