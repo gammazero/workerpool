@@ -48,6 +48,10 @@ func TestMaxWorkers(t *testing.T) {
 	wp = New(max)
 	defer wp.Stop()
 
+	if wp.Size() != max {
+		t.Fatal("wrong size returned")
+	}
+
 	started := make(chan struct{}, max)
 	sync := make(chan struct{})
 

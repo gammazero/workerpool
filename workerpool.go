@@ -53,6 +53,11 @@ type WorkerPool struct {
 	wait         bool
 }
 
+// Size returns the maximum number of concurrent workers.
+func (p *WorkerPool) Size() int {
+	return p.maxWorkers
+}
+
 // Stop stops the worker pool and waits for only currently running tasks to
 // complete.  Pending tasks that are not currently running are abandoned.
 // Tasks must not be submitted to the worker pool after calling stop.
