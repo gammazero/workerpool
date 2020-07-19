@@ -185,9 +185,11 @@ Loop:
 		p.workerQueue <- nil
 		workerCount--
 	}
+
+	timeout.Stop()
 }
 
-// startWorker runs initial task and start worker waiting for more.
+// startWorker runs initial task, then starts a worker waiting for more.
 func startWorker(task func(), workerQueue chan func()) {
 	task()
 	go worker(workerQueue)
