@@ -1,23 +1,23 @@
 package workerpool
 
 import (
-	"github.com/gammazero/deque"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gammazero/deque"
 )
 
 const (
-	// If worker pool receives no new work for this period of time, then stop
-	// a worker goroutine.
-	idleTimeout = 5 * time.Second
+	// If workes idle for at least this period of time, then stop a worker.
+	idleTimeout = 2 * time.Second
 )
 
 // New creates and starts a pool of worker goroutines.
 //
-// The maxWorkers parameter specifies the maximum number of workers that will
-// execute tasks concurrently.  After each timeout period, a worker goroutine
-// is stopped until there are no remaining workers.
+// The maxWorkers parameter specifies the maximum number of workers that can
+// execute tasks concurrently.  When there are no incoming tasks, workers are
+// gradually stopped until there are no remaining workers.
 func New(maxWorkers int) *WorkerPool {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
@@ -86,20 +86,18 @@ func (p *WorkerPool) Stopped() bool {
 // captured in the task function closure.
 //
 // Submit will not block regardless of the number of tasks submitted.  Each
-// task is immediately given to an available worker or passed to a goroutine to
-// be given to the next available worker.  If there are no available workers,
-// the dispatcher adds a worker, until the maximum number of workers are
-// running.
+// task is immediately given to an available worker or to a newly started
+// worker.  If there are no available workers, and the maximum number of
+// workers are already created, then the task is put onto a waiting queue.
 //
-// After the maximum number of workers are running, and no workers are
-// available, incoming tasks are put onto a queue and will be executed as
-// workers become available.
+// When there are tasks on the waiting queue, any additional new tasks are put
+// on the waiting queue.  Tasks are removed from the waiting queue as workers
+// become available.
 //
-// When no new tasks have been submitted for a time period and a worker is
-// available, the worker is shutdown.  As long as no new tasks arrive, one
-// available worker is shutdown each time period until there are no more idle
-// workers.  Since the time to start new goroutines is not significant, there
-// is no need to retain idle workers.
+// As long as no new tasks arrive, one available worker is shutdown each time
+// period until there are no more idle workers.  Since the time to start new
+// goroutines is not significant, there is no need to retain idle workers
+// indefinitely.
 func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
 		p.taskQueue <- task
@@ -119,7 +117,7 @@ func (p *WorkerPool) SubmitWait(task func()) {
 	<-doneChan
 }
 
-// WaitingQueueSize will return the size of the waiting queue
+// WaitingQueueSize returns the count of tasks in the waiting queue.
 func (p *WorkerPool) WaitingQueueSize() int {
 	return int(atomic.LoadInt32(&p.waiting))
 }
@@ -129,6 +127,7 @@ func (p *WorkerPool) dispatch() {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(idleTimeout)
 	var workerCount int
+	var idle bool
 
 Loop:
 	for {
@@ -162,13 +161,16 @@ Loop:
 					atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 				}
 			}
+			idle = false
 		case <-timeout.C:
-			// Timed out waiting for work to arrive.  Kill a ready worker.
-			if workerCount > 0 {
+			// Timed out waiting for work to arrive.  Kill a ready worker if
+			// pool has been idle for a whole timeout.
+			if idle && workerCount > 0 {
 				if p.killIdleWorker() {
 					workerCount--
 				}
 			}
+			idle = true
 			timeout.Reset(idleTimeout)
 		}
 	}
@@ -214,8 +216,8 @@ func (p *WorkerPool) stop(wait bool) {
 }
 
 // processWaitingQueue puts new tasks onto the the waiting queue, and removes
-// tasks from the waiting queue as space becomes available on the worker queue.
-// Returns false if worker pool is stopped.
+// tasks from the waiting queue as workers become available. Returns false if
+// worker pool is stopped.
 func (p *WorkerPool) processWaitingQueue() bool {
 	select {
 	case task, ok := <-p.taskQueue:

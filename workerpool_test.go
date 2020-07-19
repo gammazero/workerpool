@@ -142,9 +142,15 @@ func TestWorkerTimeout(t *testing.T) {
 	}
 
 	// Check that a worker timed out.
-	time.Sleep(idleTimeout + time.Second)
+	time.Sleep(idleTimeout*2 + idleTimeout/2)
 	if countReady(wp) != max-1 {
 		t.Fatal("First worker did not timeout")
+	}
+
+	// Check that another worker timed out.
+	time.Sleep(idleTimeout)
+	if countReady(wp) != max-2 {
+		t.Fatal("Second worker did not timeout")
 	}
 }
 
@@ -425,7 +431,7 @@ func anyReady(w *WorkerPool) bool {
 
 func countReady(w *WorkerPool) int {
 	// Try to stop max workers.
-	timeout := time.After(time.Second)
+	timeout := time.After(100 * time.Millisecond)
 	var readyCount int
 	for i := 0; i < max; i++ {
 		select {
