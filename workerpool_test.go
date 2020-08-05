@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -152,6 +153,20 @@ func TestWorkerTimeout(t *testing.T) {
 	if countReady(wp) != max-2 {
 		t.Fatal("Second worker did not timeout")
 	}
+}
+
+func TestCommonSubmit(t *testing.T) {
+	t.Parallel()
+	wp := New(0)
+	wp.CommonSubmit(sum, 1, 2)
+	wp.StopWait()
+}
+
+func TestCommonSubmitWait(t *testing.T) {
+	t.Parallel()
+	wp := New(0)
+	wp.CommonSubmitWait(sum, 1, 2)
+	wp.StopWait()
 }
 
 func TestStop(t *testing.T) {
@@ -427,6 +442,10 @@ func anyReady(w *WorkerPool) bool {
 	default:
 	}
 	return false
+}
+
+func sum(a, b int) {
+	fmt.Println("sum = ", a+b)
 }
 
 func countReady(w *WorkerPool) int {

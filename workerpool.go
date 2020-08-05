@@ -1,6 +1,8 @@
 package workerpool
 
 import (
+	"errors"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -115,6 +117,51 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		close(doneChan)
 	}
 	<-doneChan
+}
+
+// CommonSubmit accept Arbitrary parameters function
+// args: first parameter is function ,The following parameters are Function parameter list
+func (p *WorkerPool) CommonSubmit(args ...interface{}) {
+	if task, _ := CommonFunc(args); task != nil {
+		p.taskQueue <- task
+	}
+}
+
+// CommonSubmitWait enqueues the given function and waits for it to be executed.
+func (p *WorkerPool) CommonSubmitWait(args ...interface{}) {
+	task, _ := CommonFunc(args)
+	if task == nil {
+		return
+	}
+	doneChan := make(chan struct{})
+	p.taskQueue <- func() {
+		task()
+		close(doneChan)
+	}
+	<-doneChan
+}
+
+func CommonFunc(args ...interface{}) (func(), error) {
+	if len(args) == 0 {
+		return nil, errors.New("args error!")
+	}
+	var ft reflect.Type
+	var fv reflect.Value
+	cacher := []reflect.Value{}
+	for argNum, arg := range args {
+		if argNum == 0 {
+			ft = reflect.TypeOf(arg)
+			if ft.Kind() != reflect.Func {
+				return nil, errors.New("Only for functions")
+			}
+			fv = reflect.ValueOf(arg)
+		} else {
+			cacher = append(cacher, reflect.ValueOf(arg))
+		}
+	}
+	return func() {
+		fv.Call(cacher)
+	}, nil
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
