@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -110,21 +111,9 @@ func TestWorkerTimeout(t *testing.T) {
 	wp := New(max)
 	defer wp.Stop()
 
-	var started sync.WaitGroup
-	started.Add(max)
-	release := make(chan struct{})
-
-	// Cause workers to be created.  Workers wait on channel, keeping them busy
-	// and causing the worker pool to create more.
-	for i := 0; i < max; i++ {
-		wp.Submit(func() {
-			started.Done()
-			<-release
-		})
-	}
-
-	// Wait for tasks to start.
-	started.Wait()
+	// Start workers, and have them all wait on ctx before completing.
+	ctx, cancel := context.WithCancel(context.Background())
+	wp.Pause(ctx)
 
 	if anyReady(wp) {
 		t.Fatal("number of ready workers should be zero")
@@ -135,7 +124,7 @@ func TestWorkerTimeout(t *testing.T) {
 	}
 
 	// Release workers.
-	close(release)
+	cancel()
 
 	if countReady(wp) != max {
 		t.Fatal("Expected", max, "ready workers")
@@ -160,23 +149,12 @@ func TestStop(t *testing.T) {
 	wp := New(max)
 	defer wp.Stop()
 
-	release := make(chan struct{})
-	var started sync.WaitGroup
-	started.Add(max)
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < max; i++ {
-		wp.Submit(func() {
-			started.Done()
-			<-release
-		})
-	}
-
-	// Wait for all queued tasks to be dispatched to workers.
-	started.Wait()
+	// Start workers, and have them all wait on ctx before completing.
+	ctx, cancel := context.WithCancel(context.Background())
+	wp.Pause(ctx)
 
 	// Release workers.
-	close(release)
+	cancel()
 
 	if wp.Stopped() {
 		t.Fatal("pool should not be stopped")
@@ -193,7 +171,8 @@ func TestStop(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	wp = New(5)
-	release = make(chan struct{})
+
+	release := make(chan struct{})
 	finished := make(chan struct{}, max)
 	for i := 0; i < max; i++ {
 		wp.Submit(func() {
@@ -333,20 +312,10 @@ func TestOverflow(t *testing.T) {
 
 func TestStopRace(t *testing.T) {
 	wp := New(20)
-	workRelChan := make(chan struct{})
 
-	var started sync.WaitGroup
-	started.Add(20)
-
-	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < 20; i++ {
-		wp.Submit(func() {
-			started.Done()
-			<-workRelChan
-		})
-	}
-
-	started.Wait()
+	// Start and pause all workers.
+	ctx, cancel := context.WithCancel(context.Background())
+	wp.Pause(ctx)
 
 	const doneCallers = 5
 	stopDone := make(chan struct{}, doneCallers)
@@ -363,7 +332,7 @@ func TestStopRace(t *testing.T) {
 	default:
 	}
 
-	close(workRelChan)
+	cancel()
 
 	timeout := time.After(time.Second)
 	for i := 0; i < doneCallers; i++ {
@@ -417,6 +386,50 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 	if maxMax >= goroutines*tasks {
 		t.Error("should not have seen all tasks on waiting queue")
 	}
+}
+
+func TestPause(t *testing.T) {
+	wp := New(5)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ran := make(chan struct{})
+	wp.Submit(func() {
+		close(ran)
+	})
+
+	wp.Pause(ctx)
+
+	select {
+	case <-ran:
+	default:
+		t.Error("did not all tasks before returning from Pause")
+	}
+
+	ran = make(chan struct{})
+	wp.Submit(func() {
+		close(ran)
+	})
+
+	select {
+	case <-ran:
+		t.Error("ran while paused")
+	case <-time.After(time.Millisecond):
+	}
+
+	if wp.WaitingQueueSize() != 1 {
+		t.Error("waiting queue size should be 1")
+	}
+
+	// Cancel context to unpause workers.
+	cancel()
+
+	select {
+	case <-ran:
+	case <-time.After(time.Millisecond):
+		t.Error("did not run after canceling pause")
+	}
+
+	wp.StopWait()
 }
 
 func anyReady(w *WorkerPool) bool {
