@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -120,6 +121,22 @@ func (p *WorkerPool) SubmitWait(task func()) {
 // WaitingQueueSize returns the count of tasks in the waiting queue.
 func (p *WorkerPool) WaitingQueueSize() int {
 	return int(atomic.LoadInt32(&p.waiting))
+}
+
+// Pause causes all workers to wait on the given Context, returning when all
+// workers are waiting.  Tasks can continue to be queued to the workerpool, but
+// are not executed until the Context is canceled.
+func (p *WorkerPool) Pause(ctx context.Context) {
+	ready := new(sync.WaitGroup)
+	ready.Add(p.maxWorkers)
+	for i := 0; i < p.maxWorkers; i++ {
+		p.Submit(func() {
+			ready.Done()
+			<-ctx.Done()
+		})
+	}
+	// Wait for workers to all be paused
+	ready.Wait()
 }
 
 // dispatch sends the next queued task to an available worker.
