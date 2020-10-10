@@ -29,6 +29,7 @@ func New(maxWorkers int) *WorkerPool {
 		maxWorkers:  maxWorkers,
 		taskQueue:   make(chan func(), 1),
 		workerQueue: make(chan func()),
+		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
 	}
 
@@ -45,9 +46,11 @@ type WorkerPool struct {
 	taskQueue    chan func()
 	workerQueue  chan func()
 	stoppedChan  chan struct{}
+	stopSignal   chan struct{}
 	waitingQueue deque.Deque
+	stopLock     sync.Mutex
 	stopOnce     sync.Once
-	stopped      int32
+	stopped      bool
 	waiting      int32
 	wait         bool
 }
@@ -77,7 +80,9 @@ func (p *WorkerPool) StopWait() {
 
 // Stopped returns true if this worker pool has been stopped.
 func (p *WorkerPool) Stopped() bool {
-	return atomic.LoadInt32(&p.stopped) != 0
+	p.stopLock.Lock()
+	defer p.stopLock.Unlock()
+	return p.stopped
 }
 
 // Submit enqueues a function for a worker to execute.
@@ -123,16 +128,33 @@ func (p *WorkerPool) WaitingQueueSize() int {
 	return int(atomic.LoadInt32(&p.waiting))
 }
 
-// Pause causes all workers to wait on the given Context, returning when all
-// workers are waiting.  Tasks can continue to be queued to the workerpool, but
-// are not executed until the Context is canceled.
+// Pause causes all workers to wait on the given Context, thereby making them
+// unavailable to run tasks.  Pause returns when all workers are waiting.
+// Tasks can continue to be queued to the workerpool, but are not executed
+// until the Context is canceled or times out.
+//
+// Calling Pause when the worker pool is already paused causes Pause to wait
+// until all previous pauses are canceled.  This allows a goroutine to take
+// control of pausing and unpausing the pool as soon as other goroutines have
+// unpaused it.
+//
+// When the workerpool is stopped, workers are unpaused and queued tasks are
+// executed during StopWait.
 func (p *WorkerPool) Pause(ctx context.Context) {
+	p.stopLock.Lock()
+	defer p.stopLock.Unlock()
+	if p.stopped {
+		return
+	}
 	ready := new(sync.WaitGroup)
 	ready.Add(p.maxWorkers)
 	for i := 0; i < p.maxWorkers; i++ {
 		p.Submit(func() {
 			ready.Done()
-			<-ctx.Done()
+			select {
+			case <-ctx.Done():
+			case <-p.stopSignal:
+			}
 		})
 	}
 	// Wait for workers to all be paused
@@ -226,7 +248,16 @@ func worker(workerQueue chan func()) {
 // tasks.
 func (p *WorkerPool) stop(wait bool) {
 	p.stopOnce.Do(func() {
-		atomic.StoreInt32(&p.stopped, 1)
+		// Signal that workerpool is stopping, to unpause any paused workers.
+		close(p.stopSignal)
+		// Acquire stopLock to wait for any pause in progress to complete.  All
+		// in-progress pauses will complete because the stopSignal unpauses the
+		// workers.
+		p.stopLock.Lock()
+		// The stopped flag prevents any additional paused workers.  This makes
+		// it safe to close the taskQueue.
+		p.stopped = true
+		p.stopLock.Unlock()
 		p.wait = wait
 		// Close task queue and wait for currently running tasks to finish.
 		close(p.taskQueue)
