@@ -389,20 +389,22 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 }
 
 func TestPause(t *testing.T) {
-	wp := New(5)
+	wp := New(25)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ran := make(chan struct{})
 	wp.Submit(func() {
+		time.Sleep(time.Millisecond)
 		close(ran)
 	})
 
 	wp.Pause(ctx)
 
+	// Check that Pause waits for all previously submitted tasks to run.
 	select {
 	case <-ran:
 	default:
-		t.Error("did not all tasks before returning from Pause")
+		t.Error("did not run all tasks before returning from Pause")
 	}
 
 	ran = make(chan struct{})
@@ -410,12 +412,14 @@ func TestPause(t *testing.T) {
 		close(ran)
 	})
 
+	// Check that a new task did not run while paused
 	select {
 	case <-ran:
 		t.Error("ran while paused")
 	case <-time.After(time.Millisecond):
 	}
 
+	// Check that task was enqueued
 	if wp.WaitingQueueSize() != 1 {
 		t.Error("waiting queue size should be 1")
 	}
@@ -423,13 +427,123 @@ func TestPause(t *testing.T) {
 	// Cancel context to unpause workers.
 	cancel()
 
+	// Check that task was run after unpausing.
 	select {
 	case <-ran:
-	case <-time.After(time.Millisecond):
+	case <-time.After(time.Second):
 		t.Error("did not run after canceling pause")
 	}
 
-	wp.StopWait()
+	// ---- Test pause while paused
+
+	ctx, cancel = context.WithCancel(context.Background())
+	wp.Pause(ctx)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+
+	pauseDone := make(chan struct{})
+	go func() {
+		wp.Pause(ctx2)
+		close(pauseDone)
+	}()
+
+	// Check that second pause does not return until first pause in canceled
+	select {
+	case <-pauseDone:
+		t.Fatal("second Pause should not have returned")
+	case <-time.After(time.Millisecond):
+	}
+
+	cancel() // cancel 1st pause
+
+	// Check that second pause returns
+	select {
+	case <-pauseDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Pause to return")
+	}
+
+	cancel2() // cancel 2nd pause
+
+	// ---- Test concurrent pauses
+
+	ctx, cancel = context.WithCancel(context.Background())
+	ctx2, cancel2 = context.WithCancel(context.Background())
+	pauseDone = make(chan struct{})
+	pause2Done := make(chan struct{})
+	go func() {
+		wp.Pause(ctx)
+		close(pauseDone)
+	}()
+	go func() {
+		wp.Pause(ctx2)
+		close(pause2Done)
+	}()
+
+	select {
+	case <-pauseDone:
+		cancel()
+		<-pause2Done
+		cancel2()
+	case <-pause2Done:
+		cancel2()
+		<-pauseDone
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("concurrent pauses deadlocked")
+	}
+
+	// ---- Test stopping paused pool ----
+
+	ctx, cancel = context.WithCancel(context.Background())
+	ctx2, cancel2 = context.WithCancel(context.Background())
+
+	// Stack up two pauses
+	wp.Pause(ctx)
+	go wp.Pause(ctx2)
+
+	ran = make(chan struct{})
+	wp.Submit(func() {
+		close(ran)
+	})
+
+	stopDone := make(chan struct{})
+	go func() {
+		wp.StopWait()
+		close(stopDone)
+	}()
+
+	// Check that task was run after calling StopWait
+	select {
+	case <-stopDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for StopWait to return")
+	}
+
+	// Check that task was run after calling StopWait
+	select {
+	case <-ran:
+	default:
+		t.Error("did not run after canceling pause")
+	}
+
+	defer cancel()
+	defer cancel2()
+
+	// ---- Test pause after stop ----
+
+	ctx, cancel = context.WithCancel(context.Background())
+	pauseDone = make(chan struct{})
+	go func() {
+		wp.Pause(ctx)
+		close(pauseDone)
+	}()
+	select {
+	case <-pauseDone:
+	case <-time.After(time.Second):
+		t.Fatal("pause after stop did not return")
+	}
+	cancel()
 }
 
 func anyReady(w *WorkerPool) bool {
