@@ -311,11 +311,21 @@ func TestOverflow(t *testing.T) {
 }
 
 func TestStopRace(t *testing.T) {
-	wp := New(20)
+	wp := New(max)
+	workRelChan := make(chan struct{})
 
-	// Start and pause all workers.
-	ctx, cancel := context.WithCancel(context.Background())
-	wp.Pause(ctx)
+	var started sync.WaitGroup
+	started.Add(max)
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < max; i++ {
+		wp.Submit(func() {
+			started.Done()
+			<-workRelChan
+		})
+	}
+
+	started.Wait()
 
 	const doneCallers = 5
 	stopDone := make(chan struct{}, doneCallers)
@@ -332,7 +342,7 @@ func TestStopRace(t *testing.T) {
 	default:
 	}
 
-	cancel()
+	close(workRelChan)
 
 	timeout := time.After(time.Second)
 	for i := 0; i < doneCallers; i++ {
