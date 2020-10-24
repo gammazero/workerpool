@@ -14,8 +14,6 @@ func NewJob(name string, resultChan chan Result, todo func() (interface{}, error
 
 // job implements Job
 type job struct {
-	data   interface{}
-	err    error
 	name   string
 	result chan Result
 	todo   func() (interface{}, error)
