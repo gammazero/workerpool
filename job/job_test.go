@@ -25,10 +25,10 @@ func TestJobStandalone(t *testing.T) {
 			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
 		}
 		if r.Data() != expectedResult {
-			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
+			t.Fatalf("Expected %s : got %s", expectedResult, r.Data())
 		}
 		if r.Err() != expectedErr {
-			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
+			t.Fatalf("Expected %s : got %s", expectedErr, r.Err())
 		}
 	}
 }
@@ -53,10 +53,10 @@ func TestJobWorkerPool(t *testing.T) {
 			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
 		}
 		if r.Data() != expectedResult {
-			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
+			t.Fatalf("Expected %s : got %s", expectedResult, r.Data())
 		}
 		if r.Err() != expectedErr {
-			t.Fatalf("Expected %s : got %s", expectedName, r.JobName())
+			t.Fatalf("Expected %s : got %s", expectedErr, r.Err())
 		}
 	}
 
