@@ -14,23 +14,47 @@ const (
 	idleTimeout = 2 * time.Second
 )
 
+type Worker interface {
+	Do(task func())
+	Done()
+}
+
+type WorkerFunc func(task func())
+
+func (w WorkerFunc) Do(task func()) {
+	w(task)
+}
+
+func (w WorkerFunc) Done() {}
+
+func defaultWorker() Worker {
+	return WorkerFunc(func(task func()) {
+		task()
+	})
+}
+
 // New creates and starts a pool of worker goroutines.
 //
 // The maxWorkers parameter specifies the maximum number of workers that can
 // execute tasks concurrently.  When there are no incoming tasks, workers are
 // gradually stopped until there are no remaining workers.
 func New(maxWorkers int) *WorkerPool {
+	return NewCustomWorker(maxWorkers, defaultWorker)
+}
+
+func NewCustomWorker(maxWorkers int, factory func() Worker) *WorkerPool {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
 		maxWorkers = 1
 	}
 
 	pool := &WorkerPool{
-		maxWorkers:  maxWorkers,
-		taskQueue:   make(chan func(), 1),
-		workerQueue: make(chan func()),
-		stopSignal:  make(chan struct{}),
-		stoppedChan: make(chan struct{}),
+		workerFactory: factory,
+		maxWorkers:    maxWorkers,
+		taskQueue:     make(chan func(), 1),
+		workerQueue:   make(chan func()),
+		stopSignal:    make(chan struct{}),
+		stoppedChan:   make(chan struct{}),
 	}
 
 	// Start the task dispatcher.
@@ -42,17 +66,18 @@ func New(maxWorkers int) *WorkerPool {
 // WorkerPool is a collection of goroutines, where the number of concurrent
 // goroutines processing requests does not exceed the specified maximum.
 type WorkerPool struct {
-	maxWorkers   int
-	taskQueue    chan func()
-	workerQueue  chan func()
-	stoppedChan  chan struct{}
-	stopSignal   chan struct{}
-	waitingQueue deque.Deque
-	stopLock     sync.Mutex
-	stopOnce     sync.Once
-	stopped      bool
-	waiting      int32
-	wait         bool
+	workerFactory func() Worker
+	maxWorkers    int
+	taskQueue     chan func()
+	workerQueue   chan func()
+	stoppedChan   chan struct{}
+	stopSignal    chan struct{}
+	waitingQueue  deque.Deque
+	stopLock      sync.Mutex
+	stopOnce      sync.Once
+	stopped       bool
+	waiting       int32
+	wait          bool
 }
 
 // Size returns the maximum number of concurrent workers.
@@ -192,7 +217,8 @@ Loop:
 			default:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
-					go startWorker(task, p.workerQueue)
+					w := p.workerFactory()
+					go startWorker(w, task, p.workerQueue)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -229,18 +255,19 @@ Loop:
 }
 
 // startWorker runs initial task, then starts a worker waiting for more.
-func startWorker(task func(), workerQueue chan func()) {
-	task()
-	go worker(workerQueue)
+func startWorker(w Worker, task func(), workerQueue chan func()) {
+	w.Do(task)
+	go worker(w, workerQueue)
 }
 
 // worker executes tasks and stops when it receives a nil task.
-func worker(workerQueue chan func()) {
+func worker(w Worker, workerQueue chan func()) {
 	for task := range workerQueue {
 		if task == nil {
+			w.Done()
 			return
 		}
-		task()
+		w.Do(task)
 	}
 }
 

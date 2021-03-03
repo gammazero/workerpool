@@ -9,6 +9,18 @@ import (
 
 const max = 20
 
+type customTestWorker struct {
+	stopped bool
+}
+
+func (c *customTestWorker) Do(task func()) {
+	task()
+}
+
+func (c *customTestWorker) Done() {
+	c.stopped = true
+}
+
 func TestExample(t *testing.T) {
 	wp := New(2)
 	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
@@ -140,6 +152,59 @@ func TestWorkerTimeout(t *testing.T) {
 	time.Sleep(idleTimeout)
 	if countReady(wp) != max-2 {
 		t.Fatal("Second worker did not timeout")
+	}
+}
+
+func TestCustomWorkerTimeout(t *testing.T) {
+	t.Parallel()
+
+	workers := make([]*customTestWorker, 0)
+
+	factory := func() Worker {
+		w := &customTestWorker{}
+		workers = append(workers, w)
+		return w
+	}
+
+	wp := NewCustomWorker(max, factory)
+	defer wp.Stop()
+
+	// Start workers, and have them all wait on ctx before completing.
+	ctx, cancel := context.WithCancel(context.Background())
+	wp.Pause(ctx)
+
+	if anyReady(wp) {
+		t.Fatal("number of ready workers should be zero")
+	}
+
+	if wp.killIdleWorker() {
+		t.Fatal("should have been no idle workers to kill")
+	}
+
+	// Release workers.
+	cancel()
+
+	if countReady(wp) != max {
+		t.Fatal("Expected", max, "ready workers")
+	}
+
+	// Check that a worker timed out.
+	time.Sleep(idleTimeout*2 + idleTimeout/2)
+	if countReady(wp) != max-1 {
+		t.Fatal("First worker did not timeout")
+	}
+
+	// Check that another worker timed out.
+	time.Sleep(idleTimeout)
+	if countReady(wp) != max-2 {
+		t.Fatal("Second worker did not timeout")
+	}
+
+	for _, w := range workers {
+		// ensuring done is called
+		if !w.stopped {
+			t.Error("custom worker still running")
+		}
 	}
 }
 
@@ -559,7 +624,7 @@ func TestPause(t *testing.T) {
 func anyReady(w *WorkerPool) bool {
 	select {
 	case w.workerQueue <- nil:
-		go worker(w.workerQueue)
+		go worker(defaultWorker(), w.workerQueue)
 		return true
 	default:
 	}
@@ -581,7 +646,7 @@ func countReady(w *WorkerPool) int {
 
 	// Restore workers.
 	for i := 0; i < readyCount; i++ {
-		go worker(w.workerQueue)
+		go worker(defaultWorker(), w.workerQueue)
 	}
 	return readyCount
 }
