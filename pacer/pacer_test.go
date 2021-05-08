@@ -54,7 +54,7 @@ func TestPacedWorkers(t *testing.T) {
 	}
 
 	tasksDone.Wait()
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	// 9 times delay2 since no wait for first task, and pacer and slowPacer run
 	// currently so only limiter is slowPacer.
 	if elapsed < 9*delay2 {
