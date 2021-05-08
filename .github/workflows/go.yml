@@ -25,7 +25,7 @@ jobs:
       run: go build -v ./...
 
     - name: Test
-      run: go test -v ./... -coverprofile=coverage.txt -covermode=atomic
+      run: go test -race -v ./... -coverprofile=coverage.txt -covermode=atomic
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v1
