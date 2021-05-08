@@ -100,7 +100,7 @@ func (p *Pacer) run() {
 	// Read item from gate no faster than one per delay.
 	// Reading from the unbuffered channel serves as a "tick"
 	// and unblocks the writer.
-	for _ = range p.gate {
+	for range p.gate {
 		time.Sleep(p.delay)
 		p.pause <- struct{}{} // will wait here if channel blocked
 		<-p.pause             // clear channel
