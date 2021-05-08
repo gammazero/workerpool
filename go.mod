@@ -1,5 +1,5 @@
 module github.com/gammazero/workerpool
 
-require github.com/gammazero/deque v0.0.0-20200721202602-07291166fe33
+require github.com/gammazero/deque v0.1.0
 
-go 1.14
+go 1.15
