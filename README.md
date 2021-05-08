@@ -46,7 +46,3 @@ func main() {
 ## Usage Note
 
 There is no upper limit on the number of tasks queued, other than the limits of system resources.  If the number of inbound tasks is too many to even queue for pending processing, then the solution is outside the scope of workerpool.  If should be solved by distributing load over multiple systems, and/or storing input for pending processing in intermediate storage such as a file system, distributed message queue, etc.
-
-## Real world examples
-
-The list of open source projects using worker pool can be found [here](https://github.com/gammazero/workerpool/wiki#open-projects-using-workerpool)
