@@ -415,6 +415,52 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 	}
 }
 
+func TestRunningCount(t *testing.T) {
+	type test struct {
+		name             string
+		workers          int
+		jobs             int
+		expectedParallel int
+	}
+
+	tests := []test{
+		{"no jobs", 2, 0, 0},
+		{"below worker limit", 3, 2, 2},
+		{"exactly worker limit", 2, 2, 2},
+		{"over worker limit", 2, 3, 2},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
+			wp := New(tt.workers)
+			defer wp.Stop()
+
+			done := make(chan struct{})
+
+			for x := 0; x < tt.jobs; x++ {
+				wp.Submit(func() {
+					<-done
+				})
+			}
+
+			// Wait for jobs to be picket up.
+			// This may be a bit racy, but it's simple and clear.
+			time.Sleep(time.Millisecond)
+
+			count := wp.RunningCount()
+
+			close(done)
+
+			if count != tt.expectedParallel {
+				t.Errorf("should have reported %d running tasks, got %d", tt.expectedParallel, count)
+			}
+		})
+	}
+}
+
 func TestPause(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
@@ -705,7 +751,7 @@ func benchmarkExecWorkers(n int, b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < n; j++ {
 			wp.Submit(func() {
-				//time.Sleep(100 * time.Microsecond)
+				// time.Sleep(100 * time.Microsecond)
 				allDone.Done()
 			})
 		}
