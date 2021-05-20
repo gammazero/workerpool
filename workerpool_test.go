@@ -5,11 +5,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 const max = 20
 
 func TestExample(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	wp := New(2)
 	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
 
@@ -39,9 +43,10 @@ func TestExample(t *testing.T) {
 }
 
 func TestMaxWorkers(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t)
 
 	wp := New(0)
+	wp.Stop()
 	if wp.maxWorkers != 1 {
 		t.Fatal("should have created one worker")
 	}
@@ -83,7 +88,7 @@ func TestMaxWorkers(t *testing.T) {
 }
 
 func TestReuseWorkers(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t)
 
 	wp := New(5)
 	defer wp.Stop()
@@ -106,7 +111,7 @@ func TestReuseWorkers(t *testing.T) {
 }
 
 func TestWorkerTimeout(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t)
 
 	wp := New(max)
 	defer wp.Stop()
@@ -144,10 +149,9 @@ func TestWorkerTimeout(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t)
 
 	wp := New(max)
-	defer wp.Stop()
 
 	// Start workers, and have them all wait on ctx before completing.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -206,7 +210,7 @@ Count:
 }
 
 func TestStopWait(t *testing.T) {
-	t.Parallel()
+	defer goleak.VerifyNone(t)
 
 	// Start workers, and have them all wait on a channel before completing.
 	wp := New(5)
@@ -254,6 +258,8 @@ func TestStopWait(t *testing.T) {
 }
 
 func TestSubmitWait(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	wp := New(1)
 	defer wp.Stop()
 
@@ -285,7 +291,10 @@ func TestSubmitWait(t *testing.T) {
 }
 
 func TestOverflow(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	wp := New(2)
+	defer wp.Stop()
 	releaseChan := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
@@ -311,7 +320,11 @@ func TestOverflow(t *testing.T) {
 }
 
 func TestStopRace(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	wp := New(max)
+	defer wp.Stop()
+
 	workRelChan := make(chan struct{})
 
 	var started sync.WaitGroup
@@ -357,12 +370,15 @@ func TestStopRace(t *testing.T) {
 // Run this test with race detector to test that using WaitingQueueSize has no
 // race condition
 func TestWaitingQueueSizeRace(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	const (
 		goroutines = 10
 		tasks      = 20
 		workers    = 5
 	)
 	wp := New(workers)
+	defer wp.Stop()
+
 	maxChan := make(chan int)
 	for g := 0; g < goroutines; g++ {
 		go func() {
@@ -399,7 +415,11 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 }
 
 func TestPause(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	wp := New(25)
+	defer wp.Stop()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ran := make(chan struct{})
