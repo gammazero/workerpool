@@ -52,6 +52,7 @@ type WorkerPool struct {
 	stopOnce     sync.Once
 	stopped      bool
 	waiting      int32
+	running      int32
 	wait         bool
 }
 
@@ -128,6 +129,11 @@ func (p *WorkerPool) WaitingQueueSize() int {
 	return int(atomic.LoadInt32(&p.waiting))
 }
 
+// RunningCount returns the count of tasks being processed by workers.
+func (p *WorkerPool) RunningCount() int {
+	return int(atomic.LoadInt32(&p.running))
+}
+
 // Pause causes all workers to wait on the given Context, thereby making them
 // unavailable to run tasks.  Pause returns when all workers are waiting.
 // Tasks can continue to be queued to the workerpool, but are not executed
@@ -194,7 +200,7 @@ Loop:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
 					wg.Add(1)
-					go startWorker(task, p.workerQueue, &wg)
+					go p.startWorker(task, &wg)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -232,19 +238,23 @@ Loop:
 }
 
 // startWorker runs initial task, then starts a worker waiting for more.
-func startWorker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
+func (p *WorkerPool) startWorker(task func(), wg *sync.WaitGroup) {
+	atomic.AddInt32(&p.running, 1)
 	task()
-	go worker(workerQueue, wg)
+	atomic.AddInt32(&p.running, -1)
+	go p.worker(wg)
 }
 
 // worker executes tasks and stops when it receives a nil task.
-func worker(workerQueue chan func(), wg *sync.WaitGroup) {
-	for task := range workerQueue {
+func (p *WorkerPool) worker(wg *sync.WaitGroup) {
+	for task := range p.workerQueue {
 		if task == nil {
 			wg.Done()
 			return
 		}
+		atomic.AddInt32(&p.running, 1)
 		task()
+		atomic.AddInt32(&p.running, -1)
 	}
 }
 
