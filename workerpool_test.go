@@ -362,6 +362,7 @@ func TestStopRace(t *testing.T) {
 		select {
 		case <-stopDone:
 		case <-timeout:
+			wp.Stop()
 			t.Fatal("timedout waiting for Stop to return")
 		}
 	}
@@ -480,6 +481,7 @@ func TestPause(t *testing.T) {
 	// Check that second pause does not return until first pause in canceled
 	select {
 	case <-pauseDone:
+		wp.Stop()
 		t.Fatal("second Pause should not have returned")
 	case <-time.After(time.Millisecond):
 	}
@@ -490,6 +492,7 @@ func TestPause(t *testing.T) {
 	select {
 	case <-pauseDone:
 	case <-time.After(time.Second):
+		wp.Stop()
 		t.Fatal("timed out waiting for Pause to return")
 	}
 
@@ -576,10 +579,33 @@ func TestPause(t *testing.T) {
 	cancel()
 }
 
+func TestWorkerLeak(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const workerCount = 100
+
+	wp := New(workerCount)
+
+	// Start workers, and have them all wait on a channel before completing.
+	for i := 0; i < workerCount; i++ {
+		wp.Submit(func() {
+			time.Sleep(time.Millisecond)
+		})
+	}
+
+	// If wp..Stop() is not waiting for all workers to complete, then goleak
+	// should catch that
+	wp.Stop()
+}
+
 func anyReady(w *WorkerPool) bool {
+	release := make(chan struct{})
+	wait := func() {
+		<-release
+	}
 	select {
-	case w.workerQueue <- nil:
-		go worker(w.workerQueue)
+	case w.workerQueue <- wait:
+		close(release)
 		return true
 	default:
 	}
@@ -589,20 +615,21 @@ func anyReady(w *WorkerPool) bool {
 func countReady(w *WorkerPool) int {
 	// Try to stop max workers.
 	timeout := time.After(100 * time.Millisecond)
+	release := make(chan struct{})
+	wait := func() {
+		<-release
+	}
 	var readyCount int
 	for i := 0; i < max; i++ {
 		select {
-		case w.workerQueue <- nil:
+		case w.workerQueue <- wait:
 			readyCount++
 		case <-timeout:
 			i = max
 		}
 	}
 
-	// Restore workers.
-	for i := 0; i < readyCount; i++ {
-		go worker(w.workerQueue)
-	}
+	close(release)
 	return readyCount
 }
 
