@@ -33,7 +33,7 @@ func New(maxWorkers int) *WorkerPool {
 		workerQueue: make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
-		recoverFunc: func() {
+		panicHandler: func() {
 			if rec := recover(); rec != nil {
 				fmt.Println(fmt.Errorf("panic: %+v\n%s", rec, collectStack()))
 			}
@@ -60,7 +60,7 @@ type WorkerPool struct {
 	stopped      bool
 	waiting      int32
 	wait         bool
-	recoverFunc  func()
+	panicHandler func()
 }
 
 // Size returns the maximum number of concurrent workers.
@@ -135,17 +135,17 @@ func (p *WorkerPool) SubmitWait(task func()) {
 func (p *WorkerPool) SubmitRecover(task func()) {
 	if task != nil {
 		p.taskQueue <- func() {
-			defer p.recoverFunc()
+			defer p.panicHandler()
 
 			task()
 		}
 	}
 }
 
-// SetRecoverFunc allows the user to override panic recover functionality.
-func (p *WorkerPool) SetRecoverFunc(recoverFunc func()) {
-	if recoverFunc != nil {
-		p.recoverFunc = recoverFunc
+// SetPanicHandler allows the user to override panic recover functionality.
+func (p *WorkerPool) SetPanicHandler(panicHandler func()) {
+	if panicHandler != nil {
+		p.panicHandler = panicHandler
 	}
 }
 
