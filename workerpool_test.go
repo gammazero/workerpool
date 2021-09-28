@@ -290,6 +290,18 @@ func TestSubmitWait(t *testing.T) {
 	}
 }
 
+func TestSubmitRecover(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	wp := New(1)
+	defer wp.Stop()
+
+	// if panic isn't recovered, test will fail
+	wp.SubmitRecover(func() {
+		panic("panic test")
+	})
+}
+
 func TestOverflow(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
