@@ -33,6 +33,11 @@ func New(maxWorkers int) *WorkerPool {
 		workerQueue: make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
+		recoverFunc: func() {
+			if rec := recover(); rec != nil {
+				fmt.Println(fmt.Errorf("panic: %+v\n%s", rec, collectStack()))
+			}
+		},
 	}
 
 	// Start the task dispatcher.
@@ -55,6 +60,7 @@ type WorkerPool struct {
 	stopped      bool
 	waiting      int32
 	wait         bool
+	recoverFunc  func()
 }
 
 // Size returns the maximum number of concurrent workers.
@@ -129,14 +135,17 @@ func (p *WorkerPool) SubmitWait(task func()) {
 func (p *WorkerPool) SubmitRecover(task func()) {
 	if task != nil {
 		p.taskQueue <- func() {
-			defer func() {
-				if rec := recover(); rec != nil {
-					fmt.Println(fmt.Errorf("panic: %+v\n%s", rec, collectStack()))
-				}
-			}()
+			defer p.recoverFunc()
 
 			task()
 		}
+	}
+}
+
+// SetRecoverFunc allows the user to override panic recover functionality.
+func (p *WorkerPool) SetRecoverFunc(recoverFunc func()) {
+	if recoverFunc != nil {
+		p.recoverFunc = recoverFunc
 	}
 }
 
