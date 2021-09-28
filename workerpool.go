@@ -2,6 +2,8 @@ package workerpool
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -121,6 +123,21 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		close(doneChan)
 	}
 	<-doneChan
+}
+
+// SubmitRecover enqueues the given function and defers a panic recover func.
+func (p *WorkerPool) SubmitRecover(task func()) {
+	if task != nil {
+		p.taskQueue <- func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					fmt.Println(fmt.Errorf("panic: %+v\n%s", rec, collectStack()))
+				}
+			}()
+
+			task()
+		}
+	}
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
@@ -306,4 +323,11 @@ func (p *WorkerPool) runQueuedTasks() {
 		p.workerQueue <- p.waitingQueue.PopFront().(func())
 		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 	}
+}
+
+// collectStack collects the stack trace for a panic
+func collectStack() []byte {
+	buf := make([]byte, 64<<10)
+	buf = buf[:runtime.Stack(buf, false)]
+	return buf
 }
