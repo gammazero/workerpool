@@ -131,7 +131,7 @@ func (p *WorkerPool) SubmitWait(task func()) {
 	<-doneChan
 }
 
-// SubmitRecover enqueues the given function and defers a panic recover func.
+// SubmitRecover enqueues the given function and defers a call to `p.panicHandler`.
 func (p *WorkerPool) SubmitRecover(task func()) {
 	if task != nil {
 		p.taskQueue <- func() {
