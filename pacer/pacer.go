@@ -20,7 +20,7 @@ import "time"
 // To use Pacer, create a new Pacer giving the interval that must elapse
 // between the start of one task the start of the next task.  Then call Pace(),
 // passing your task function.  A new paced task function is returned that can
-// then be passed to WorkerPool's Submit() or SubmitWait(), or called as a go
+// then be passed to WorkerPool's submit() or SubmitWait(), or called as a go
 // routine.  Paced functions, that are run as goroutines, are also paced.  For
 // example:
 //
@@ -31,7 +31,7 @@ import "time"
 //     })
 //
 //     wp := workerpool.New(5)
-//     wp.Submit(pacedTask)
+//     wp.submit(pacedTask)
 //
 //     go pacedTask()
 //
@@ -58,7 +58,7 @@ func NewPacer(delay time.Duration) *Pacer {
 }
 
 // Pace wraps a function in a paced function.  The returned paced function can
-// then be submitted to the workerpool, using Submit or SubmitWait, and
+// then be submitted to the workerpool, using submit or SubmitWait, and
 // starting the tasks is paced according to the pacer's delay.
 func (p *Pacer) Pace(task func()) func() {
 	return func() {

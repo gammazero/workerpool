@@ -93,13 +93,13 @@ func (p *WorkerPool) Stopped() bool {
 	return p.stopped
 }
 
-// Submit enqueues a function for a worker to execute.
+// submit enqueues a function for a worker to execute.
 //
 // Any external values needed by the task function must be captured in a
 // closure.  Any return values should be returned over a channel that is
 // captured in the task function closure.
 //
-// Submit will not block regardless of the number of tasks submitted.  Each
+// submit will not block regardless of the number of tasks submitted.  Each
 // task is immediately given to an available worker or to a newly started
 // worker.  If there are no available workers, and the maximum number of
 // workers are already created, then the task is put onto a waiting queue.
@@ -112,7 +112,7 @@ func (p *WorkerPool) Stopped() bool {
 // period until there are no more idle workers.  Since the time to start new
 // goroutines is not significant, there is no need to retain idle workers
 // indefinitely.
-func (p *WorkerPool) Submit(task func()) {
+func (p *WorkerPool) submit(task func()) {
 	if task != nil {
 		p.taskQueue <- task
 	}
@@ -175,7 +175,7 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	ready := new(sync.WaitGroup)
 	ready.Add(p.maxWorkers)
 	for i := 0; i < p.maxWorkers; i++ {
-		p.Submit(func() {
+		p.submit(func() {
 			ready.Done()
 			select {
 			case <-ctx.Done():

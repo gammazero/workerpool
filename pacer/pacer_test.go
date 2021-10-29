@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gammazero/workerpool"
+	"github.com/highlight-run/workerpool"
 )
 
 func TestPacedWorkers(t *testing.T) {
@@ -38,8 +38,8 @@ func TestPacedWorkers(t *testing.T) {
 
 	// Cause worker to be created, and available for reuse before next task.
 	for i := 0; i < 10; i++ {
-		wp.Submit(pacedTask)
-		wp.Submit(slowPacedTask)
+		wp.SubmitRecover(pacedTask)
+		wp.SubmitRecover(slowPacedTask)
 	}
 
 	time.Sleep(500 * time.Millisecond)
