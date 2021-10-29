@@ -20,7 +20,7 @@ func TestExample(t *testing.T) {
 	rspChan := make(chan string, len(requests))
 	for _, r := range requests {
 		r := r
-		wp.Submit(func() {
+		wp.submit(func() {
 			rspChan <- r
 		})
 	}
@@ -63,7 +63,7 @@ func TestMaxWorkers(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.submit(func() {
 			started <- struct{}{}
 			<-release
 		})
@@ -97,7 +97,7 @@ func TestReuseWorkers(t *testing.T) {
 
 	// Cause worker to be created, and available for reuse before next task.
 	for i := 0; i < 10; i++ {
-		wp.Submit(func() { <-release })
+		wp.submit(func() { <-release })
 		release <- struct{}{}
 		time.Sleep(time.Millisecond)
 	}
@@ -179,7 +179,7 @@ func TestStop(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.submit(func() {
 			<-release
 			finished <- struct{}{}
 		})
@@ -217,7 +217,7 @@ func TestStopWait(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.submit(func() {
 			<-release
 			finished <- struct{}{}
 		})
@@ -264,17 +264,17 @@ func TestSubmitWait(t *testing.T) {
 	defer wp.Stop()
 
 	// Check that these are noop.
-	wp.Submit(nil)
+	wp.submit(nil)
 	wp.SubmitWait(nil)
 
 	done1 := make(chan struct{})
-	wp.Submit(func() {
+	wp.submit(func() {
 		time.Sleep(100 * time.Millisecond)
 		close(done1)
 	})
 	select {
 	case <-done1:
-		t.Fatal("Submit did not return immediately")
+		t.Fatal("submit did not return immediately")
 	default:
 	}
 
@@ -311,7 +311,7 @@ func TestOverflow(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < 64; i++ {
-		wp.Submit(func() { <-releaseChan })
+		wp.submit(func() { <-releaseChan })
 	}
 
 	// Start a goroutine to free the workers after calling stop.  This way
@@ -344,7 +344,7 @@ func TestStopRace(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.submit(func() {
 			started.Done()
 			<-workRelChan
 		})
@@ -396,10 +396,10 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 	for g := 0; g < goroutines; g++ {
 		go func() {
 			max := 0
-			// Submit 100 tasks, checking waiting queue size each time.  Report
+			// submit 100 tasks, checking waiting queue size each time.  Report
 			// the maximum queue size seen.
 			for i := 0; i < tasks; i++ {
-				wp.Submit(func() {
+				wp.submit(func() {
 					time.Sleep(time.Microsecond)
 				})
 				waiting := wp.WaitingQueueSize()
@@ -436,7 +436,7 @@ func TestPause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ran := make(chan struct{})
-	wp.Submit(func() {
+	wp.submit(func() {
 		time.Sleep(time.Millisecond)
 		close(ran)
 	})
@@ -451,7 +451,7 @@ func TestPause(t *testing.T) {
 	}
 
 	ran = make(chan struct{})
-	wp.Submit(func() {
+	wp.submit(func() {
 		close(ran)
 	})
 
@@ -548,7 +548,7 @@ func TestPause(t *testing.T) {
 	go wp.Pause(ctx2)
 
 	ran = make(chan struct{})
-	wp.Submit(func() {
+	wp.submit(func() {
 		close(ran)
 	})
 
@@ -600,7 +600,7 @@ func TestWorkerLeak(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < workerCount; i++ {
-		wp.Submit(func() {
+		wp.submit(func() {
 			time.Sleep(time.Millisecond)
 		})
 	}
@@ -660,7 +660,7 @@ func BenchmarkEnqueue(b *testing.B) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
-		wp.Submit(func() { <-releaseChan })
+		wp.submit(func() { <-releaseChan })
 	}
 	close(releaseChan)
 }
@@ -675,7 +675,7 @@ func BenchmarkEnqueue2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		releaseChan := make(chan struct{})
 		for i := 0; i < 64; i++ {
-			wp.Submit(func() { <-releaseChan })
+			wp.submit(func() { <-releaseChan })
 		}
 		close(releaseChan)
 	}
@@ -716,7 +716,7 @@ func benchmarkExecWorkers(n int, b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < n; j++ {
-			wp.Submit(func() {
+			wp.submit(func() {
 				//time.Sleep(100 * time.Microsecond)
 				allDone.Done()
 			})
