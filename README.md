@@ -54,5 +54,4 @@ There is no upper limit on the number of tasks queued, other than the limits of 
 
 ### Submit To Worker
 
-When using SubmitWaitWorker the function call is blocked if there are
-no workers available. This can be useful for limiting the size of the task queue by blocking the incoming tasks.
+When using SubmitWaitWorker the function call is blocked if there are no workers available. This can be useful for limiting the size of the task queue by blocking the incoming tasks.
