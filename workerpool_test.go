@@ -290,6 +290,53 @@ func TestSubmitWait(t *testing.T) {
 	}
 }
 
+func TestSubmitWaitWorker(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"}
+	wp := New(len(requests) - 1)
+
+	rspChan := make(chan string, len(requests))
+	i := 0
+	for ; i < len(requests)-1; i++ {
+		r := requests[i]
+		wp.Submit(func() {
+			time.Sleep(1 * time.Second)
+			rspChan <- r
+		})
+	}
+
+	t1 := time.Now()
+	// This should block
+	wp.SubmitWaitWorker(func() {
+		rspChan <- requests[i]
+	})
+
+	t2 := time.Now()
+
+	wp.StopWait()
+
+	close(rspChan)
+
+	secondsDiff := t2.Sub(t1).Seconds()
+	if secondsDiff < 1 {
+		t.Fatal("SubmitWaitWorker should have been blocked for at least 1 second")
+	}
+
+	rspSet := map[string]struct{}{}
+	for rsp := range rspChan {
+		rspSet[rsp] = struct{}{}
+	}
+	if len(rspSet) < len(requests) {
+		t.Fatal("Did not handle all requests")
+	}
+	for _, req := range requests {
+		if _, ok := rspSet[req]; !ok {
+			t.Fatal("Missing expected values:", req)
+		}
+	}
+}
+
 func TestOverflow(t *testing.T) {
 	defer goleak.VerifyNone(t)
 

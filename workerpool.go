@@ -112,13 +112,29 @@ func (p *WorkerPool) Submit(task func()) {
 
 // SubmitWait enqueues the given function and waits for it to be executed.
 func (p *WorkerPool) SubmitWait(task func()) {
+	p.submitWait(task, false)
+}
+
+// SubmitWaitWorker enqueues the given function and waits for it to be taken by a worker.
+func (p *WorkerPool) SubmitWaitWorker(task func()) {
+	p.submitWait(task, true)
+}
+
+func (p *WorkerPool) submitWait(task func(), waitForWorker bool) {
 	if task == nil {
 		return
 	}
 	doneChan := make(chan struct{})
 	p.taskQueue <- func() {
-		task()
-		close(doneChan)
+
+		if waitForWorker {
+			close(doneChan)
+			task()
+		} else {
+			task()
+			close(doneChan)
+		}
+
 	}
 	<-doneChan
 }
