@@ -233,14 +233,11 @@ Loop:
 
 // worker executes tasks and stops when it receives a nil task.
 func worker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
-	task()
-	for task := range workerQueue {
-		if task == nil {
-			wg.Done()
-			return
-		}
+	for task != nil {
 		task()
+		task = <-workerQueue
 	}
+	wg.Done()
 }
 
 // stop tells the dispatcher to exit, and whether or not to complete queued
