@@ -47,7 +47,7 @@ type WorkerPool struct {
 	workerQueue  chan func()
 	stoppedChan  chan struct{}
 	stopSignal   chan struct{}
-	waitingQueue deque.Deque
+	waitingQueue deque.Deque[interface{}]
 	stopLock     sync.Mutex
 	stopOnce     sync.Once
 	stopped      bool

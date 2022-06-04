@@ -5,4 +5,4 @@ require (
 	go.uber.org/goleak v1.1.12
 )
 
-go 1.15
+go 1.18
