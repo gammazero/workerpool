@@ -167,6 +167,7 @@ func (p *WorkerPool) dispatch() {
 	timeout := time.NewTimer(idleTimeout)
 	var workerCount int
 	var idle bool
+	var wg sync.WaitGroup
 
 Loop:
 	for {
@@ -192,7 +193,8 @@ Loop:
 			default:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
-					go startWorker(task, p.workerQueue)
+					wg.Add(1)
+					go startWorker(task, p.workerQueue, &wg)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -224,20 +226,22 @@ Loop:
 		p.workerQueue <- nil
 		workerCount--
 	}
+	wg.Wait()
 
 	timeout.Stop()
 }
 
 // startWorker runs initial task, then starts a worker waiting for more.
-func startWorker(task func(), workerQueue chan func()) {
+func startWorker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
 	task()
-	go worker(workerQueue)
+	go worker(workerQueue, wg)
 }
 
 // worker executes tasks and stops when it receives a nil task.
-func worker(workerQueue chan func()) {
+func worker(workerQueue chan func(), wg *sync.WaitGroup) {
 	for task := range workerQueue {
 		if task == nil {
+			wg.Done()
 			return
 		}
 		task()
