@@ -47,7 +47,7 @@ type WorkerPool struct {
 	workerQueue  chan func()
 	stoppedChan  chan struct{}
 	stopSignal   chan struct{}
-	waitingQueue deque.Deque
+	waitingQueue deque.Deque[func()]
 	stopLock     sync.Mutex
 	stopOnce     sync.Once
 	stopped      bool
@@ -167,7 +167,6 @@ func (p *WorkerPool) dispatch() {
 	timeout := time.NewTimer(idleTimeout)
 	var workerCount int
 	var idle bool
-	var wg sync.WaitGroup
 
 Loop:
 	for {
@@ -193,8 +192,7 @@ Loop:
 			default:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
-					wg.Add(1)
-					go startWorker(task, p.workerQueue, &wg)
+					go startWorker(task, p.workerQueue)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -226,22 +224,20 @@ Loop:
 		p.workerQueue <- nil
 		workerCount--
 	}
-	wg.Wait()
 
 	timeout.Stop()
 }
 
 // startWorker runs initial task, then starts a worker waiting for more.
-func startWorker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
+func startWorker(task func(), workerQueue chan func()) {
 	task()
-	go worker(workerQueue, wg)
+	go worker(workerQueue)
 }
 
 // worker executes tasks and stops when it receives a nil task.
-func worker(workerQueue chan func(), wg *sync.WaitGroup) {
+func worker(workerQueue chan func()) {
 	for task := range workerQueue {
 		if task == nil {
-			wg.Done()
 			return
 		}
 		task()
@@ -279,7 +275,7 @@ func (p *WorkerPool) processWaitingQueue() bool {
 			return false
 		}
 		p.waitingQueue.PushBack(task)
-	case p.workerQueue <- p.waitingQueue.Front().(func()):
+	case p.workerQueue <- p.waitingQueue.Front():
 		// A worker was ready, so gave task to worker.
 		p.waitingQueue.PopFront()
 	}
@@ -303,7 +299,7 @@ func (p *WorkerPool) killIdleWorker() bool {
 func (p *WorkerPool) runQueuedTasks() {
 	for p.waitingQueue.Len() != 0 {
 		// A worker is ready, so give task to worker.
-		p.workerQueue <- p.waitingQueue.PopFront().(func())
+		p.workerQueue <- p.waitingQueue.PopFront()
 		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 	}
 }
