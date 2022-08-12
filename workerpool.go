@@ -194,7 +194,7 @@ Loop:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
 					wg.Add(1)
-					go startWorker(task, p.workerQueue, &wg)
+					go worker(task, p.workerQueue, &wg)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -231,21 +231,13 @@ Loop:
 	timeout.Stop()
 }
 
-// startWorker runs initial task, then starts a worker waiting for more.
-func startWorker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
-	task()
-	go worker(workerQueue, wg)
-}
-
 // worker executes tasks and stops when it receives a nil task.
-func worker(workerQueue chan func(), wg *sync.WaitGroup) {
-	for task := range workerQueue {
-		if task == nil {
-			wg.Done()
-			return
-		}
+func worker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
+	for task != nil {
 		task()
+		task = <-workerQueue
 	}
+	wg.Done()
 }
 
 // stop tells the dispatcher to exit, and whether or not to complete queued
