@@ -6,23 +6,26 @@ executed by the workers.  This is useful when performing tasks that require
 sufficient resources (CPU, memory, etc.), and running too many tasks at the
 same time would exhaust resources.
 
-Non-blocking task submission
+Non-blocking and blocking task submission
 
-A task is a function submitted to the worker pool for execution.  Submitting
-tasks to this worker pool will not block, regardless of the number of tasks.
-Incoming tasks are immediately dispatched to an available
-worker.  If no worker is immediately available, or there are already tasks
-waiting for an available worker, then the task is put on a waiting queue to
-wait for an available worker.
+A task is a function submitted to the worker pool for execution. There are
+different ways of submitting a task, non-blocking and blocking. A non-blocking
+task submission will not block, regardless of the number of tasks. Incoming tasks
+are immediately dispatched to an available worker.  If no worker is immediately
+available, or there are already tasks waiting for an available worker, then the
+task is put on a waiting queue to wait for an available worker. However, blocking task
+submission will block the submission until a worker becomes available and starts
+executing the task.
 
-The intent of the worker pool is to limit the concurrency of task execution,
-not limit the number of tasks queued to be executed.  Therefore, this unbounded
-input of tasks is acceptable as the tasks cannot be discarded.  If the number
+The main intent of the worker pool is to limit the concurrency of task execution,
+not limit the number of tasks queued to be executed. Therefore, this unbounded
+input of tasks is acceptable as the tasks cannot be discarded. If the number
 of inbound tasks is too many to even queue for pending processing, then the
 solution is outside the scope of workerpool, and should be solved by
 distributing load over multiple systems, and/or storing input for pending
 processing in intermediate storage such as a database, file system, distributed
-message queue, etc.
+message queue, etc. However, with the blocking task submissions one can regulate
+the number of incoming tasks to the worker pool if desired.
 
 Dispatcher
 
@@ -47,13 +50,12 @@ than tasks that use Y Mb of memory.
 
 Waiting queue vs goroutines
 
-When there are no available workers to handle incoming tasks, the tasks are put
-on a waiting queue, in this implementation.  In implementations mentioned in
-the credits below, these tasks were passed to goroutines.  Using a queue is
-faster and has less memory overhead than creating a separate goroutine for each
-waiting task, allowing a much higher number of waiting tasks.  Also, using a
-waiting queue ensures that tasks are given to workers in the order the tasks
-were received.
+When submitting in a non-blocking way and there are no available workers to handle
+incoming tasks, the tasks are put on a waiting queue, in this implementation.
+In implementations mentioned in the credits below, these tasks were passed to goroutines.
+Using a queue is faster and has less memory overhead than creating a separate goroutine
+for each waiting task, allowing a much higher number of waiting tasks.  Also, using a
+waiting queue ensures that tasks are given to workers in the order the tasks were received.
 
 Credits
 
