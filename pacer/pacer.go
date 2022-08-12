@@ -1,27 +1,27 @@
 /*
 Package pacer provides a utility to limit the rate at which concurrent
-goroutines begin execution.  This addresses situations where running the
+goroutines begin execution. This addresses situations where running the
 concurrent goroutines is OK, as long as their execution does not start at the
 same time.
 
-The pacer package is independent of the workerpool package.  Paced functions
-can be submitted to a workerpool or can be run as goroutines, and execution
-will be paced in both cases.
+The pacer package is independent of the workerpool package. Paced functions can
+be submitted to a workerpool or can be run as goroutines, and execution will be
+paced in both cases.
 
 */
 package pacer
 
 import "time"
 
-// Pacer is a goroutine rate limiter.  When concurrent goroutines call
+// Pacer is a goroutine rate limiter. When concurrent goroutines call
 // Pacer.Next(), the call returns in a single goroutine at a time, at a rate no
 // faster than one per delay time.
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
-// between the start of one task the start of the next task.  Then call Pace(),
-// passing your task function.  A new paced task function is returned that can
+// between the start of one task the start of the next task. Then call Pace(),
+// passing your task function. A new paced task function is returned that can
 // then be passed to WorkerPool's Submit() or SubmitWait(), or called as a go
-// routine.  Paced functions, that are run as goroutines, are also paced.  For
+// routine. Paced functions, that are run as goroutines, are also paced. For
 // example:
 //
 //     pacer := pacer.NewPacer(time.Second)
@@ -57,7 +57,7 @@ func NewPacer(delay time.Duration) *Pacer {
 	return p
 }
 
-// Pace wraps a function in a paced function.  The returned paced function can
+// Pace wraps a function in a paced function. The returned paced function can
 // then be submitted to the workerpool, using Submit or SubmitWait, and
 // starting the tasks is paced according to the pacer's delay.
 func (p *Pacer) Pace(task func()) func() {
@@ -73,7 +73,7 @@ func (p *Pacer) Next() {
 	p.gate <- struct{}{}
 }
 
-// Stop stops the Pacer from running.  Do not call until all paced tasks have
+// Stop stops the Pacer from running. Do not call until all paced tasks have
 // completed, or paced tasks will hang waiting for pacer to unblock them.
 func (p *Pacer) Stop() {
 	close(p.gate)
@@ -97,9 +97,8 @@ func (p *Pacer) Resume() {
 }
 
 func (p *Pacer) run() {
-	// Read item from gate no faster than one per delay.
-	// Reading from the unbuffered channel serves as a "tick"
-	// and unblocks the writer.
+	// Read item from gate no faster than one per delay. Reading from the
+	// unbuffered channel serves as a "tick" and unblocks the writer.
 	for range p.gate {
 		time.Sleep(p.delay)
 		p.pause <- struct{}{} // will wait here if channel blocked
