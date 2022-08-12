@@ -47,7 +47,7 @@ type WorkerPool struct {
 	workerQueue  chan func()
 	stoppedChan  chan struct{}
 	stopSignal   chan struct{}
-	waitingQueue deque.Deque
+	waitingQueue deque.Deque[func()]
 	stopLock     sync.Mutex
 	stopOnce     sync.Once
 	stopped      bool
@@ -271,7 +271,7 @@ func (p *WorkerPool) processWaitingQueue() bool {
 			return false
 		}
 		p.waitingQueue.PushBack(task)
-	case p.workerQueue <- p.waitingQueue.Front().(func()):
+	case p.workerQueue <- p.waitingQueue.Front():
 		// A worker was ready, so gave task to worker.
 		p.waitingQueue.PopFront()
 	}
@@ -295,7 +295,7 @@ func (p *WorkerPool) killIdleWorker() bool {
 func (p *WorkerPool) runQueuedTasks() {
 	for p.waitingQueue.Len() != 0 {
 		// A worker is ready, so give task to worker.
-		p.workerQueue <- p.waitingQueue.PopFront().(func())
+		p.workerQueue <- p.waitingQueue.PopFront()
 		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
 	}
 }
