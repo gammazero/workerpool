@@ -31,6 +31,7 @@ func New(maxWorkers int) *WorkerPool {
 		workerQueue: make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
+		pause:       new(sync.WaitGroup),
 	}
 
 	// Start the task dispatcher.
@@ -53,6 +54,7 @@ type WorkerPool struct {
 	stopped      bool
 	waiting      int32
 	wait         bool
+	pause        *sync.WaitGroup
 }
 
 // Size returns the maximum number of concurrent workers.
@@ -129,14 +131,14 @@ func (p *WorkerPool) WaitingQueueSize() int {
 }
 
 // Pause causes all workers to wait on the given Context, thereby making them
-// unavailable to run tasks. Pause returns when all workers are waiting. Tasks
-// can continue to be queued to the workerpool, but are not executed until the
+// unavailable to run tasks. After calling Pause no worker will execute a task
+// that it was not already executing before the call to pause. Tasks can
+// continue to be queued to the workerpool, but are not executed until the
 // Context is canceled or times out.
 //
-// Calling Pause when the worker pool is already paused causes Pause to wait
-// until all previous pauses are canceled. This allows a goroutine to take
-// control of pausing and unpausing the pool as soon as other goroutines have
-// unpaused it.
+// Calling Pause when the worker pool is already paused keeps the workers
+// paused until the context for every Pauses is canceled. Each call to pause
+// returns without blocking.
 //
 // When the workerpool is stopped, workers are unpaused and queued tasks are
 // executed during StopWait.
@@ -146,19 +148,14 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	if p.stopped {
 		return
 	}
-	ready := new(sync.WaitGroup)
-	ready.Add(p.maxWorkers)
-	for i := 0; i < p.maxWorkers; i++ {
-		p.Submit(func() {
-			ready.Done()
-			select {
-			case <-ctx.Done():
-			case <-p.stopSignal:
-			}
-		})
-	}
-	// Wait for workers to all be paused
-	ready.Wait()
+	p.pause.Add(1)
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-p.stopSignal:
+		}
+		p.pause.Done()
+	}()
 }
 
 // dispatch sends the next queued task to an available worker.
@@ -194,7 +191,7 @@ Loop:
 				// Create a new worker, if not at max.
 				if workerCount < p.maxWorkers {
 					wg.Add(1)
-					go worker(task, p.workerQueue, &wg)
+					go worker(task, p.workerQueue, &wg, p.pause)
 					workerCount++
 				} else {
 					// Enqueue task to be executed by next available worker.
@@ -232,8 +229,9 @@ Loop:
 }
 
 // worker executes tasks and stops when it receives a nil task.
-func worker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
+func worker(task func(), workerQueue chan func(), wg, pause *sync.WaitGroup) {
 	for task != nil {
+		pause.Wait()
 		task()
 		task = <-workerQueue
 	}
@@ -254,6 +252,9 @@ func (p *WorkerPool) stop(wait bool) {
 		// it safe to close the taskQueue.
 		p.stopped = true
 		p.stopLock.Unlock()
+
+		p.pause.Wait()
+
 		p.wait = wait
 		// Close task queue and wait for currently running tasks to finish.
 		close(p.taskQueue)
