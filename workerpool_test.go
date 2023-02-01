@@ -20,8 +20,9 @@ func TestExample(t *testing.T) {
 	rspChan := make(chan string, len(requests))
 	for _, r := range requests {
 		r := r
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			rspChan <- r
+			return nil
 		})
 	}
 
@@ -63,9 +64,10 @@ func TestMaxWorkers(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			started <- struct{}{}
 			<-release
+			return nil
 		})
 	}
 
@@ -97,7 +99,10 @@ func TestReuseWorkers(t *testing.T) {
 
 	// Cause worker to be created, and available for reuse before next task.
 	for i := 0; i < 10; i++ {
-		wp.Submit(func() { <-release })
+		wp.Submit(context.Background(), func() error {
+			<-release
+			return nil
+		})
 		release <- struct{}{}
 		time.Sleep(time.Millisecond)
 	}
@@ -137,6 +142,7 @@ func TestWorkerTimeout(t *testing.T) {
 
 	// Check that a worker timed out.
 	time.Sleep(idleTimeout*2 + idleTimeout/2)
+
 	if countReady(wp) != max-1 {
 		t.Fatal("First worker did not timeout")
 	}
@@ -179,9 +185,10 @@ func TestStop(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			<-release
 			finished <- struct{}{}
+			return nil
 		})
 	}
 
@@ -217,9 +224,10 @@ func TestStopWait(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			<-release
 			finished <- struct{}{}
+			return nil
 		})
 	}
 
@@ -264,13 +272,14 @@ func TestSubmitWait(t *testing.T) {
 	defer wp.Stop()
 
 	// Check that these are noop.
-	wp.Submit(nil)
-	wp.SubmitWait(nil)
+	wp.Submit(context.Background(), nil)
+	wp.SubmitWait(context.Background(), nil)
 
 	done1 := make(chan struct{})
-	wp.Submit(func() {
+	wp.Submit(context.Background(), func() error {
 		time.Sleep(100 * time.Millisecond)
 		close(done1)
+		return nil
 	})
 	select {
 	case <-done1:
@@ -279,9 +288,10 @@ func TestSubmitWait(t *testing.T) {
 	}
 
 	done2 := make(chan struct{})
-	wp.SubmitWait(func() {
+	wp.SubmitWait(context.Background(), func() error {
 		time.Sleep(100 * time.Millisecond)
 		close(done2)
+		return nil
 	})
 	select {
 	case <-done2:
@@ -299,7 +309,10 @@ func TestOverflow(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < 64; i++ {
-		wp.Submit(func() { <-releaseChan })
+		wp.Submit(context.Background(), func() error {
+			<-releaseChan
+			return nil
+		})
 	}
 
 	// Start a goroutine to free the workers after calling stop.  This way
@@ -332,9 +345,10 @@ func TestStopRace(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < max; i++ {
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			started.Done()
 			<-workRelChan
+			return nil
 		})
 	}
 
@@ -387,8 +401,9 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 			// Submit 100 tasks, checking waiting queue size each time.  Report
 			// the maximum queue size seen.
 			for i := 0; i < tasks; i++ {
-				wp.Submit(func() {
+				wp.Submit(context.Background(), func() error {
 					time.Sleep(time.Microsecond)
+					return nil
 				})
 				waiting := wp.WaitingQueueSize()
 				if waiting > max {
@@ -424,9 +439,10 @@ func TestPause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ran := make(chan struct{})
-	wp.Submit(func() {
+	wp.Submit(context.Background(), func() error {
 		time.Sleep(time.Millisecond)
 		close(ran)
+		return nil
 	})
 
 	wp.Pause(ctx)
@@ -439,8 +455,9 @@ func TestPause(t *testing.T) {
 	}
 
 	ran = make(chan struct{})
-	wp.Submit(func() {
+	wp.Submit(context.Background(), func() error {
 		close(ran)
+		return nil
 	})
 
 	// Check that a new task did not run while paused
@@ -536,8 +553,9 @@ func TestPause(t *testing.T) {
 	go wp.Pause(ctx2)
 
 	ran = make(chan struct{})
-	wp.Submit(func() {
+	wp.Submit(context.Background(), func() error {
 		close(ran)
+		return nil
 	})
 
 	stopDone := make(chan struct{})
@@ -588,8 +606,9 @@ func TestWorkerLeak(t *testing.T) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < workerCount; i++ {
-		wp.Submit(func() {
+		wp.Submit(context.Background(), func() error {
 			time.Sleep(time.Millisecond)
+			return nil
 		})
 	}
 
@@ -600,11 +619,12 @@ func TestWorkerLeak(t *testing.T) {
 
 func anyReady(w *WorkerPool) bool {
 	release := make(chan struct{})
-	wait := func() {
+	wait := func() error {
 		<-release
+		return nil
 	}
 	select {
-	case w.workerQueue <- wait:
+	case w.workerQueue <- NewTask(context.Background(), wait):
 		close(release)
 		return true
 	default:
@@ -616,13 +636,14 @@ func countReady(w *WorkerPool) int {
 	// Try to stop max workers.
 	timeout := time.After(100 * time.Millisecond)
 	release := make(chan struct{})
-	wait := func() {
+	wait := func() error {
 		<-release
+		return nil
 	}
 	var readyCount int
 	for i := 0; i < max; i++ {
 		select {
-		case w.workerQueue <- wait:
+		case w.workerQueue <- NewTask(context.Background(), wait):
 			readyCount++
 		case <-timeout:
 			i = max
@@ -648,7 +669,10 @@ func BenchmarkEnqueue(b *testing.B) {
 
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
-		wp.Submit(func() { <-releaseChan })
+		wp.Submit(context.Background(), func() error {
+			<-releaseChan
+			return nil
+		})
 	}
 	close(releaseChan)
 }
@@ -663,7 +687,10 @@ func BenchmarkEnqueue2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		releaseChan := make(chan struct{})
 		for i := 0; i < 64; i++ {
-			wp.Submit(func() { <-releaseChan })
+			wp.Submit(context.Background(), func() error {
+				<-releaseChan
+				return nil
+			})
 		}
 		close(releaseChan)
 	}
@@ -704,9 +731,10 @@ func benchmarkExecWorkers(n int, b *testing.B) {
 	// Start workers, and have them all wait on a channel before completing.
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < n; j++ {
-			wp.Submit(func() {
+			wp.Submit(context.Background(), func() error {
 				//time.Sleep(100 * time.Microsecond)
 				allDone.Done()
+				return nil
 			})
 		}
 	}

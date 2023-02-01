@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,8 +28,8 @@ func New(maxWorkers int) *WorkerPool {
 
 	pool := &WorkerPool{
 		maxWorkers:  maxWorkers,
-		taskQueue:   make(chan func()),
-		workerQueue: make(chan func()),
+		taskQueue:   make(chan *poolTask),
+		workerQueue: make(chan *poolTask),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
 	}
@@ -43,11 +44,11 @@ func New(maxWorkers int) *WorkerPool {
 // goroutines processing requests does not exceed the specified maximum.
 type WorkerPool struct {
 	maxWorkers   int
-	taskQueue    chan func()
-	workerQueue  chan func()
+	taskQueue    chan *poolTask
+	workerQueue  chan *poolTask
 	stoppedChan  chan struct{}
 	stopSignal   chan struct{}
-	waitingQueue deque.Deque[func()]
+	waitingQueue deque.Deque[*poolTask]
 	stopLock     sync.Mutex
 	stopOnce     sync.Once
 	stopped      bool
@@ -104,23 +105,27 @@ func (p *WorkerPool) Stopped() bool {
 // period until there are no more idle workers. Since the time to start new
 // goroutines is not significant, there is no need to retain idle workers
 // indefinitely.
-func (p *WorkerPool) Submit(task func()) {
-	if task != nil {
-		p.taskQueue <- task
+func (p *WorkerPool) Submit(ctx context.Context, fn func() error, timeout ...time.Duration) <-chan error {
+	if fn != nil {
+		t := NewTask(ctx, fn, timeout...)
+		p.taskQueue <- t
+		return t.Err
 	}
+
+	errCh := make(chan error)
+	close(errCh)
+
+	return errCh
 }
 
 // SubmitWait enqueues the given function and waits for it to be executed.
-func (p *WorkerPool) SubmitWait(task func()) {
-	if task == nil {
-		return
+func (p *WorkerPool) SubmitWait(ctx context.Context, fn func() error, timeout ...time.Duration) error {
+	if fn == nil {
+		return nil
 	}
-	doneChan := make(chan struct{})
-	p.taskQueue <- func() {
-		task()
-		close(doneChan)
-	}
-	<-doneChan
+	t := NewTask(ctx, fn, timeout...)
+	p.taskQueue <- t
+	return <-t.Err
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
@@ -149,12 +154,13 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	ready := new(sync.WaitGroup)
 	ready.Add(p.maxWorkers)
 	for i := 0; i < p.maxWorkers; i++ {
-		p.Submit(func() {
+		p.Submit(context.Background(), func() error {
 			ready.Done()
 			select {
 			case <-ctx.Done():
 			case <-p.stopSignal:
 			}
+			return nil
 		})
 	}
 	// Wait for workers to all be paused
@@ -231,11 +237,60 @@ Loop:
 	timeout.Stop()
 }
 
+type poolTask struct {
+	task   func() error
+	Err    chan error
+	done   chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func NewTask(ctx context.Context, fn func() error, timeout ...time.Duration) *poolTask {
+	cancel := defaultCancel
+
+	if len(timeout) > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout[0])
+	}
+
+	return &poolTask{
+		task:   fn,
+		Err:    make(chan error, 1),
+		done:   make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
+	}
+}
+
+type Options func(context.Context) context.Context
+
+func defaultCancel() {
+	return
+}
+
+var ErrTimeout = errors.New("timeout")
+
 // worker executes tasks and stops when it receives a nil task.
-func worker(task func(), workerQueue chan func(), wg *sync.WaitGroup) {
-	for task != nil {
-		task()
-		task = <-workerQueue
+func worker(task *poolTask, workerQueue chan *poolTask, wg *sync.WaitGroup) {
+	for task != nil && task.task != nil {
+		var err error
+
+		done := task.done
+
+		go func() {
+			err = task.task()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			task.Err <- err
+			task.cancel()
+
+			task = <-workerQueue
+		case <-task.ctx.Done():
+			task.Err <- ErrTimeout
+			task.cancel()
+		}
 	}
 	wg.Done()
 }
