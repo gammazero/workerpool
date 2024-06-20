@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -596,6 +597,89 @@ func TestWorkerLeak(t *testing.T) {
 	// If wp..Stop() is not waiting for all workers to complete, then goleak
 	// should catch that
 	wp.Stop()
+}
+
+func TestTrySubmit(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	wp := New(1)
+
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+
+	err := wp.TrySubmit(func() {
+		doneCh <- struct{}{}
+	})
+	if err != nil {
+		t.Error("expected no error")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel()
+
+	select {
+	case <-doneCh:
+		break
+	case <-ctx.Done():
+		t.Error("timed out waiting for function to execute")
+	}
+
+	wp.Stop()
+	err = wp.TrySubmit(func() {
+		doneCh <- struct{}{}
+	})
+	if !errors.Is(err, ErrWorkerStopped) {
+		t.Error("expected ErrWorkerStopped")
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Millisecond*100)
+	defer cancel2()
+
+	select {
+	case <-doneCh:
+		t.Error("function should not have executed")
+	case <-ctx2.Done():
+		break
+	}
+}
+
+func TestTrySubmitWait(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	wp := New(1)
+
+	done := make(chan struct{})
+	err := wp.TrySubmitWait(func() {
+		time.Sleep(100 * time.Millisecond)
+		close(done)
+	})
+	select {
+	case <-done:
+		if err != nil {
+			t.Error("expected no error")
+		}
+	default:
+		t.Error("TrySubmitWait did not wait for function to execute")
+	}
+
+	wp.Stop()
+
+	done2 := make(chan struct{})
+	defer close(done2)
+
+	err = wp.TrySubmitWait(func() {
+		time.Sleep(100 * time.Millisecond)
+		close(done2)
+	})
+
+	select {
+	case <-done2:
+		t.Error("no execution expected")
+	default:
+		if !errors.Is(err, ErrWorkerStopped) {
+			t.Error("expected ErrWorkerStopped")
+		}
+	}
 }
 
 func anyReady(w *WorkerPool) bool {
