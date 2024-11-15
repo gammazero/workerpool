@@ -261,7 +261,7 @@ func (p *WorkerPool) stop(wait bool) {
 	<-p.stoppedChan
 }
 
-// processWaitingQueue puts new tasks onto the the waiting queue, and removes
+// processWaitingQueue puts new tasks onto the waiting queue, and removes
 // tasks from the waiting queue as workers become available. Returns false if
 // worker pool is stopped.
 func (p *WorkerPool) processWaitingQueue() bool {
