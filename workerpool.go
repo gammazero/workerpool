@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +14,8 @@ const (
 	// If workes idle for at least this period of time, then stop a worker.
 	idleTimeout = 2 * time.Second
 )
+
+var ErrStopped = errors.New("workerpool stopped")
 
 // New creates and starts a pool of worker goroutines.
 //
@@ -104,23 +107,51 @@ func (p *WorkerPool) Stopped() bool {
 // period until there are no more idle workers. Since the time to start new
 // goroutines is not significant, there is no need to retain idle workers
 // indefinitely.
-func (p *WorkerPool) Submit(task func()) {
-	if task != nil {
-		p.taskQueue <- task
-	}
-}
-
-// SubmitWait enqueues the given function and waits for it to be executed.
-func (p *WorkerPool) SubmitWait(task func()) {
+func (p *WorkerPool) Submit(task func()) (err error) {
 	if task == nil {
 		return
 	}
+	defer func() {
+		r := recover()
+		if r != nil {
+			if e, ok := r.(error); ok {
+				if e.Error() == "send on closed channel" {
+					err = ErrStopped
+					return
+				}
+			}
+			panic(r)
+		}
+	}()
+	p.taskQueue <- task
+	return
+}
+
+// SubmitWait enqueues the given function and waits for it to be executed.
+func (p *WorkerPool) SubmitWait(task func()) (err error) {
+	if task == nil {
+		return
+	}
+	defer func() {
+		r := recover()
+		if r != nil {
+			if e, ok := r.(error); ok {
+				if e.Error() == "send on closed channel" {
+					err = ErrStopped
+					return
+				}
+			}
+			panic(r)
+		}
+	}()
+
 	doneChan := make(chan struct{})
 	p.taskQueue <- func() {
 		task()
 		close(doneChan)
 	}
 	<-doneChan
+	return
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
