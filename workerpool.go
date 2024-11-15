@@ -31,6 +31,7 @@ func New(maxWorkers int) *WorkerPool {
 		workerQueue: make(chan func()),
 		stopSignal:  make(chan struct{}),
 		stoppedChan: make(chan struct{}),
+		close:       make(chan struct{}),
 	}
 
 	// Start the task dispatcher.
@@ -53,6 +54,7 @@ type WorkerPool struct {
 	stopped      bool
 	waiting      int32
 	wait         bool
+	close        chan struct{}
 }
 
 // Size returns the maximum number of concurrent workers.
@@ -106,7 +108,10 @@ func (p *WorkerPool) Stopped() bool {
 // indefinitely.
 func (p *WorkerPool) Submit(task func()) {
 	if task != nil {
-		p.taskQueue <- task
+		select {
+		case p.taskQueue <- task:
+		case <-p.close:
+		}
 	}
 }
 
@@ -116,11 +121,14 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		return
 	}
 	doneChan := make(chan struct{})
-	p.taskQueue <- func() {
+	select {
+	case p.taskQueue <- func() {
 		task()
 		close(doneChan)
+	}:
+		<-doneChan
+	case <-p.close:
 	}
-	<-doneChan
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
@@ -183,10 +191,9 @@ Loop:
 		}
 
 		select {
-		case task, ok := <-p.taskQueue:
-			if !ok {
-				break Loop
-			}
+		case <-p.close:
+			break Loop
+		case task := <-p.taskQueue:
 			// Got a task to do.
 			select {
 			case p.workerQueue <- task:
@@ -256,7 +263,7 @@ func (p *WorkerPool) stop(wait bool) {
 		p.stopLock.Unlock()
 		p.wait = wait
 		// Close task queue and wait for currently running tasks to finish.
-		close(p.taskQueue)
+		close(p.close)
 	})
 	<-p.stoppedChan
 }
@@ -266,10 +273,9 @@ func (p *WorkerPool) stop(wait bool) {
 // worker pool is stopped.
 func (p *WorkerPool) processWaitingQueue() bool {
 	select {
-	case task, ok := <-p.taskQueue:
-		if !ok {
-			return false
-		}
+	case <-p.close:
+		return false
+	case task := <-p.taskQueue:
 		p.waitingQueue.PushBack(task)
 	case p.workerQueue <- p.waitingQueue.Front():
 		// A worker was ready, so gave task to worker.
