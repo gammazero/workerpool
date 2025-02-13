@@ -2,21 +2,21 @@ name: Go
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
 
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Set up Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v5
       with:
-        go-version: 1.23
+        go-version: 'stable'
 
     - name: Vet
       run: go vet ./...
@@ -28,6 +28,6 @@ jobs:
       run: go test -race -v ./... -coverprofile=coverage.txt -covermode=atomic
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v5
       with:
         files: coverage.txt
