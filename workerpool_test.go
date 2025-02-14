@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -596,6 +597,44 @@ func TestWorkerLeak(t *testing.T) {
 	// If wp..Stop() is not waiting for all workers to complete, then goleak
 	// should catch that
 	wp.Stop()
+}
+
+func TestPanicSubmit(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	wp := New(1)
+	wp.Stop()
+
+	done := make(chan struct{})
+	err := wp.Submit(func() {
+		close(done)
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, ErrStopped) {
+		t.Fatal("wrong error:", err)
+	}
+	select {
+	case <-done:
+		t.Fatal("task function should not have called")
+	default:
+	}
+
+	err = wp.SubmitWait(func() {
+		close(done)
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, ErrStopped) {
+		t.Fatal("wrong error:", err)
+	}
+	select {
+	case <-done:
+		t.Fatal("task function should not have called")
+	default:
+	}
 }
 
 func anyReady(w *WorkerPool) bool {
