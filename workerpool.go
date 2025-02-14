@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,10 @@ import (
 const (
 	// If workes idle for at least this period of time, then stop a worker.
 	idleTimeout = 2 * time.Second
+)
+
+var (
+	ErrWorkerStopped = errors.New("worker stopped")
 )
 
 // New creates and starts a pool of worker goroutines.
@@ -110,6 +115,18 @@ func (p *WorkerPool) Submit(task func()) {
 	}
 }
 
+// TrySubmit tries to enqueue a function for a worker to execute.
+// It will return ErrWorkerStopped if the worker pool has been stopped.
+//
+// Refer to Submit for more information.
+func (p *WorkerPool) TrySubmit(task func()) error {
+	if p.Stopped() {
+		return ErrWorkerStopped
+	}
+	p.Submit(task)
+	return nil
+}
+
 // SubmitWait enqueues the given function and waits for it to be executed.
 func (p *WorkerPool) SubmitWait(task func()) {
 	if task == nil {
@@ -121,6 +138,18 @@ func (p *WorkerPool) SubmitWait(task func()) {
 		close(doneChan)
 	}
 	<-doneChan
+}
+
+// TrySubmitWait tries to enqueue the given function and waits for it to be executed.
+// It will return ErrWorkerStopped if the worker pool has been stopped.
+//
+// Refer to SubmitWait for more information.
+func (p *WorkerPool) TrySubmitWait(task func()) error {
+	if p.Stopped() {
+		return ErrWorkerStopped
+	}
+	p.SubmitWait(task)
+	return nil
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
