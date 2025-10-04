@@ -51,7 +51,7 @@ type WorkerPool struct {
 	stopLock     sync.Mutex
 	stopOnce     sync.Once
 	stopped      bool
-	waiting      int32
+	waiting_old  atomic.Int32
 	wait         bool
 }
 
@@ -125,7 +125,7 @@ func (p *WorkerPool) SubmitWait(task func()) {
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
 func (p *WorkerPool) WaitingQueueSize() int {
-	return int(atomic.LoadInt32(&p.waiting))
+	return int(p.waiting_old.Load())
 }
 
 // Pause causes all workers to wait on the given Context, thereby making them
@@ -199,7 +199,8 @@ Loop:
 				} else {
 					// Enqueue task to be executed by next available worker.
 					p.waitingQueue.PushBack(task)
-					atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
+					p.waitingQueue.Len()
+					p.waiting_old.Store(int32(p.waitingQueue.Len()))
 				}
 			}
 			idle = false
@@ -275,7 +276,7 @@ func (p *WorkerPool) processWaitingQueue() bool {
 		// A worker was ready, so gave task to worker.
 		p.waitingQueue.PopFront()
 	}
-	atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
+	p.waiting_old.Store(int32(p.waitingQueue.Len()))
 	return true
 }
 
@@ -296,6 +297,6 @@ func (p *WorkerPool) runQueuedTasks() {
 	for p.waitingQueue.Len() != 0 {
 		// A worker is ready, so give task to worker.
 		p.workerQueue <- p.waitingQueue.PopFront()
-		atomic.StoreInt32(&p.waiting, int32(p.waitingQueue.Len()))
+		p.waiting_old.Store(int32(p.waitingQueue.Len()))
 	}
 }

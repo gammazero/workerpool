@@ -35,7 +35,6 @@ func main() {
 	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
 
 	for _, r := range requests {
-		r := r
 		wp.Submit(func() {
 			fmt.Println("Handling request:", r)
 		})
