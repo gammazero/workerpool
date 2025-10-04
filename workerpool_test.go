@@ -61,7 +61,7 @@ func TestMaxWorkers(t *testing.T) {
 	release := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < max; i++ {
+	for range max {
 		wp.Submit(func() {
 			started <- struct{}{}
 			<-release
@@ -95,7 +95,7 @@ func TestReuseWorkers(t *testing.T) {
 	release := make(chan struct{})
 
 	// Cause worker to be created, and available for reuse before next task.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wp.Submit(func() { <-release })
 		release <- struct{}{}
 		time.Sleep(time.Millisecond)
@@ -177,7 +177,7 @@ func TestStop(t *testing.T) {
 
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
-	for i := 0; i < max; i++ {
+	for range max {
 		wp.Submit(func() {
 			<-release
 			finished <- struct{}{}
@@ -215,7 +215,7 @@ func TestStopWait(t *testing.T) {
 	wp := New(5)
 	release := make(chan struct{})
 	finished := make(chan struct{}, max)
-	for i := 0; i < max; i++ {
+	for range max {
 		wp.Submit(func() {
 			<-release
 			finished <- struct{}{}
@@ -228,7 +228,7 @@ func TestStopWait(t *testing.T) {
 		close(release)
 	}()
 	wp.StopWait()
-	for count := 0; count < max; count++ {
+	for range max {
 		select {
 		case <-finished:
 		default:
@@ -297,7 +297,7 @@ func TestOverflow(t *testing.T) {
 	releaseChan := make(chan struct{})
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		wp.Submit(func() { <-releaseChan })
 	}
 
@@ -330,7 +330,7 @@ func TestStopRace(t *testing.T) {
 	started.Add(max)
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < max; i++ {
+	for range max {
 		wp.Submit(func() {
 			started.Done()
 			<-workRelChan
@@ -341,7 +341,7 @@ func TestStopRace(t *testing.T) {
 
 	const doneCallers = 5
 	stopDone := make(chan struct{}, doneCallers)
-	for i := 0; i < doneCallers; i++ {
+	for range doneCallers {
 		go func() {
 			wp.Stop()
 			stopDone <- struct{}{}
@@ -357,7 +357,7 @@ func TestStopRace(t *testing.T) {
 	close(workRelChan)
 
 	timeout := time.After(time.Second)
-	for i := 0; i < doneCallers; i++ {
+	for range doneCallers {
 		select {
 		case <-stopDone:
 		case <-timeout:
@@ -380,12 +380,12 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 	defer wp.Stop()
 
 	maxChan := make(chan int)
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			max := 0
 			// Submit 100 tasks, checking waiting queue size each time.  Report
 			// the maximum queue size seen.
-			for i := 0; i < tasks; i++ {
+			for range tasks {
 				wp.Submit(func() {
 					time.Sleep(time.Microsecond)
 				})
@@ -400,7 +400,7 @@ func TestWaitingQueueSizeRace(t *testing.T) {
 
 	// Find maximum queuesize seen by any goroutine.
 	maxMax := 0
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		max := <-maxChan
 		if max > maxMax {
 			maxMax = max
@@ -586,7 +586,7 @@ func TestWorkerLeak(t *testing.T) {
 	wp := New(workerCount)
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < workerCount; i++ {
+	for range workerCount {
 		wp.Submit(func() {
 			time.Sleep(time.Millisecond)
 		})
@@ -646,7 +646,7 @@ func BenchmarkEnqueue(b *testing.B) {
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		wp.Submit(func() { <-releaseChan })
 	}
 	close(releaseChan)
@@ -659,9 +659,9 @@ func BenchmarkEnqueue2(b *testing.B) {
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		releaseChan := make(chan struct{})
-		for i := 0; i < 64; i++ {
+		for range 64 {
 			wp.Submit(func() { <-releaseChan })
 		}
 		close(releaseChan)
@@ -701,8 +701,8 @@ func benchmarkExecWorkers(n int, b *testing.B) {
 	b.ResetTimer()
 
 	// Start workers, and have them all wait on a channel before completing.
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < n; j++ {
+	for range b.N {
+		for range n {
 			wp.Submit(func() {
 				//time.Sleep(100 * time.Microsecond)
 				allDone.Done()

@@ -148,7 +148,7 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	}
 	ready := new(sync.WaitGroup)
 	ready.Add(p.maxWorkers)
-	for i := 0; i < p.maxWorkers; i++ {
+	for range p.maxWorkers {
 		p.Submit(func() {
 			ready.Done()
 			select {

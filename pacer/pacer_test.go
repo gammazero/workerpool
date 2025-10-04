@@ -37,7 +37,7 @@ func TestPacedWorkers(t *testing.T) {
 	})
 
 	// Cause worker to be created, and available for reuse before next task.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wp.Submit(pacedTask)
 		wp.Submit(slowPacedTask)
 	}
