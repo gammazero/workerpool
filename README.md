@@ -8,6 +8,8 @@
 
 Concurrency limiting goroutine pool. Limits the concurrency of task execution, not the number of tasks queued. Never blocks submitting tasks, no matter how many tasks are queued.
 
+If you need a worker pool that blocks when all workers are busy, see [workers](https://github.com/gammazero/workers).
+
 This implementation builds on ideas from the following:
 
 - http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang
@@ -35,7 +37,6 @@ func main() {
 	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
 
 	for _, r := range requests {
-		r := r
 		wp.Submit(func() {
 			fmt.Println("Handling request:", r)
 		})
