@@ -4,6 +4,7 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -602,6 +603,55 @@ func TestWorkerLeak(t *testing.T) {
 		// should catch that
 		wp.Stop()
 	})
+}
+
+func TestPanicDo(t *testing.T) {
+	wp := New(1)
+	wp.Stop()
+
+	done := make(chan struct{})
+	err := wp.Do(func() {
+		close(done)
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !errors.Is(err, ErrStopped) {
+		t.Fatal("wrong error:", err)
+	}
+
+	assertPanics(t, "Submit", func() {
+		wp.Submit(func() {
+			close(done)
+		})
+	})
+	select {
+	case <-done:
+		t.Fatal("task function should not have called")
+	default:
+	}
+
+	assertPanics(t, "SubmitWait", func() {
+		wp.SubmitWait(func() {
+			close(done)
+		})
+	})
+	select {
+	case <-done:
+		t.Fatal("task function should not have called")
+	default:
+	}
+}
+
+func assertPanics(t *testing.T, name string, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("%s: didn't panic as expected", name)
+		}
+	}()
+
+	f()
 }
 
 func anyReady(w *WorkerPool) bool {
