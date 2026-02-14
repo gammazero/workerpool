@@ -169,13 +169,13 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 	ready := new(sync.WaitGroup)
 	ready.Add(p.maxWorkers)
 	for i := 0; i < p.maxWorkers; i++ {
-		p.Submit(func() {
+		p.taskQueue <- func() {
 			ready.Done()
 			select {
 			case <-ctx.Done():
 			case <-p.stopSignal:
 			}
-		})
+		}
 	}
 	// Wait for workers to all be paused
 	ready.Wait()
