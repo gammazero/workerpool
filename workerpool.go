@@ -88,26 +88,14 @@ func (p *WorkerPool) Stopped() bool {
 	return p.stopped
 }
 
-func (p *WorkerPool) Do(task func()) (err error) {
-	if task == nil {
-		return
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ErrStopped
-		}
-	}()
-	p.taskQueue <- task
-	return
-}
-
-// Submit enqueues a function for a worker to execute.
+// Do enqueues a function for a worker to execute. Returns ErrStopped if the
+// worker pool is stopped.
 //
 // Any external values needed by the task function must be captured in a
 // closure. Any return values should be returned over a channel that is
 // captured in the task function closure.
 //
-// Submit will not block regardless of the number of tasks submitted. Each task
+// Do will not block regardless of the number of tasks submitted. Each task
 // is immediately given to an available worker or to a newly started worker. If
 // there are no available workers, and the maximum number of workers are
 // already created, then the task is put onto a waiting queue.
@@ -120,23 +108,38 @@ func (p *WorkerPool) Do(task func()) (err error) {
 // period until there are no more idle workers. Since the time to start new
 // goroutines is not significant, there is no need to retain idle workers
 // indefinitely.
-func (p *WorkerPool) Submit(task func()) {
+func (p *WorkerPool) Do(task func()) (err error) {
 	if task == nil {
 		return
 	}
+	defer func() {
+		if recover() != nil {
+			err = ErrStopped
+		}
+	}()
 	p.taskQueue <- task
+	return
 }
 
-// SubmitWait enqueues the given function and waits for it to be executed.
+// Submit enqueues the given function without blocking. Panics if the worker
+// pool is stopped.
+func (p *WorkerPool) Submit(task func()) {
+	if err := p.Do(task); err != nil {
+		panic(err)
+	}
+}
+
+// SubmitWait enqueues the given function, without blocking, and waits for it
+// to be executed. Panics if the worker pool is stopped.
 func (p *WorkerPool) SubmitWait(task func()) {
 	if task == nil {
 		return
 	}
 	doneChan := make(chan struct{})
-	p.taskQueue <- func() {
+	p.Submit(func() {
 		task()
 		close(doneChan)
-	}
+	})
 	<-doneChan
 }
 

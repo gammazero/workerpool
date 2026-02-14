@@ -619,11 +619,39 @@ func TestPanicDo(t *testing.T) {
 	if !errors.Is(err, ErrStopped) {
 		t.Fatal("wrong error:", err)
 	}
+
+	assertPanics(t, "Submit", func() {
+		wp.Submit(func() {
+			close(done)
+		})
+	})
 	select {
 	case <-done:
 		t.Fatal("task function should not have called")
 	default:
 	}
+
+	assertPanics(t, "SubmitWait", func() {
+		wp.SubmitWait(func() {
+			close(done)
+		})
+	})
+	select {
+	case <-done:
+		t.Fatal("task function should not have called")
+	default:
+	}
+}
+
+func assertPanics(t *testing.T, name string, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("%s: didn't panic as expected", name)
+		}
+	}()
+
+	f()
 }
 
 func anyReady(w *WorkerPool) bool {
