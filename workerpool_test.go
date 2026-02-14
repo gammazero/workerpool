@@ -152,6 +152,31 @@ func TestWorkerTimeout(t *testing.T) {
 	})
 }
 
+func TestWorkerNoTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		wp := New(max, WithIdleTimeout(-1))
+		defer wp.Stop()
+
+		// Start workers, and have them all wait on ctx before completing.
+		ctx, cancel := context.WithCancel(context.Background())
+		wp.Pause(ctx)
+		cancel()
+
+		// Check that a worker timed out.
+		time.Sleep(time.Hour)
+		synctest.Wait()
+		if countReady(wp) != max {
+			t.Fatal("no workers should have timed out")
+		}
+		// Check again.
+		time.Sleep(time.Hour)
+		synctest.Wait()
+		if countReady(wp) != max {
+			t.Fatal("no workers should have timed out")
+		}
+	})
+}
+
 func TestStop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		wp := New(max)

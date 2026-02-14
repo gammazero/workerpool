@@ -186,10 +186,17 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 // dispatch sends the next queued task to an available worker.
 func (p *WorkerPool) dispatch(idleTimeout time.Duration) {
 	defer close(p.stoppedChan)
-	timeout := time.NewTimer(idleTimeout)
-	var workerCount int
 	var idle bool
+	var idleTO <-chan time.Time
+	var workerCount int
 	var wg sync.WaitGroup
+
+	var timeout *time.Timer
+	if idleTimeout > 0 {
+		timeout = time.NewTimer(idleTimeout)
+		defer timeout.Stop()
+		idleTO = timeout.C
+	}
 
 Loop:
 	for {
@@ -225,7 +232,7 @@ Loop:
 				}
 			}
 			idle = false
-		case <-timeout.C:
+		case <-idleTO:
 			// Timed out waiting for work to arrive. Kill a ready worker if
 			// pool has been idle for a whole timeout.
 			if idle && workerCount > 0 {
@@ -249,8 +256,6 @@ Loop:
 		workerCount--
 	}
 	wg.Wait()
-
-	timeout.Stop()
 }
 
 // worker executes tasks and stops when it receives a nil task.
