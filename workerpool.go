@@ -10,11 +10,6 @@ import (
 	"github.com/gammazero/deque"
 )
 
-const (
-	// If workes idle for at least this period of time, then stop a worker.
-	idleTimeout = 2 * time.Second
-)
-
 var ErrStopped = errors.New("submitting work to stopped workerpool")
 
 // New creates and starts a pool of worker goroutines.
@@ -22,10 +17,17 @@ var ErrStopped = errors.New("submitting work to stopped workerpool")
 // The maxWorkers parameter specifies the maximum number of workers that can
 // execute tasks concurrently. When there are no incoming tasks, workers are
 // gradually stopped until there are no remaining workers.
-func New(maxWorkers int) *WorkerPool {
+func New(maxWorkers int, options ...Option) *WorkerPool {
 	// There must be at least one worker.
 	if maxWorkers < 1 {
 		maxWorkers = 1
+	}
+
+	cfg := config{
+		idleTimeout: DefaultIdleTimeout,
+	}
+	for _, opt := range options {
+		opt(&cfg)
 	}
 
 	pool := &WorkerPool{
@@ -37,7 +39,7 @@ func New(maxWorkers int) *WorkerPool {
 	}
 
 	// Start the task dispatcher.
-	go pool.dispatch()
+	go pool.dispatch(cfg.idleTimeout)
 
 	return pool
 }
@@ -182,7 +184,7 @@ func (p *WorkerPool) Pause(ctx context.Context) {
 }
 
 // dispatch sends the next queued task to an available worker.
-func (p *WorkerPool) dispatch() {
+func (p *WorkerPool) dispatch(idleTimeout time.Duration) {
 	defer close(p.stoppedChan)
 	timeout := time.NewTimer(idleTimeout)
 	var workerCount int

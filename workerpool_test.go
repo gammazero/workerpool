@@ -112,8 +112,9 @@ func TestReuseWorkers(t *testing.T) {
 }
 
 func TestWorkerTimeout(t *testing.T) {
+	const idleTimeout = time.Second
 	synctest.Test(t, func(t *testing.T) {
-		wp := New(max)
+		wp := New(max, WithIdleTimeout(idleTimeout))
 		defer wp.Stop()
 
 		// Start workers, and have them all wait on ctx before completing.
