@@ -236,6 +236,64 @@ func TestStop(t *testing.T) {
 	})
 }
 
+func TestStopReleasesWaitingQueue(t *testing.T) {
+	for _, wait := range []bool{false, true} {
+		name := "Stop"
+		if wait {
+			name = "StopWait"
+		}
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				wp := New(1)
+				release := make(chan struct{})
+				wp.Submit(func() { <-release })
+
+				const queued = 100
+				completed := make(chan struct{}, queued)
+				for range queued {
+					wp.Submit(func() { completed <- struct{}{} })
+				}
+				synctest.Wait()
+				if got := wp.WaitingQueueSize(); got != queued {
+					t.Fatalf("queued tasks = %d, want %d", got, queued)
+				}
+
+				stopped := make(chan struct{})
+				go func() {
+					if wait {
+						wp.StopWait()
+					} else {
+						wp.Stop()
+					}
+					close(stopped)
+				}()
+				synctest.Wait()
+				select {
+				case <-stopped:
+					t.Fatal("shutdown returned before the running task finished")
+				default:
+				}
+				close(release)
+				<-stopped
+
+				wantCompleted := 0
+				if wait {
+					wantCompleted = queued
+				}
+				if got := len(completed); got != wantCompleted {
+					t.Errorf("completed queued tasks = %d, want %d", got, wantCompleted)
+				}
+				if got := wp.WaitingQueueSize(); got != 0 {
+					t.Errorf("queue size after shutdown = %d, want 0", got)
+				}
+				if got := wp.waitingQueue.Cap(); got != 0 {
+					t.Errorf("retained queue capacity after shutdown = %d, want 0", got)
+				}
+			})
+		})
+	}
+}
+
 func TestStopWait(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// Start workers, and have them all wait on a channel before completing.
@@ -327,6 +385,10 @@ func TestOverflow(t *testing.T) {
 		for range 64 {
 			wp.Submit(func() { <-releaseChan })
 		}
+		synctest.Wait()
+		if qlen := wp.WaitingQueueSize(); qlen != 62 {
+			t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
+		}
 
 		// Start a goroutine to free the workers after calling stop.  This way
 		// the dispatcher can exit, then when this goroutine runs, the workerpool
@@ -336,13 +398,6 @@ func TestOverflow(t *testing.T) {
 			close(releaseChan)
 		}()
 		wp.Stop()
-
-		// Now that the worker pool has exited, it is safe to inspect its waiting
-		// queue without causing a race.
-		qlen := wp.waitingQueue.Len()
-		if qlen != 62 {
-			t.Fatal("Expected 62 tasks in waiting queue, have", qlen)
-		}
 	})
 }
 
