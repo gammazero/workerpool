@@ -283,8 +283,9 @@ func TestStopReleasesWaitingQueue(t *testing.T) {
 				if got := len(completed); got != wantCompleted {
 					t.Errorf("completed queued tasks = %d, want %d", got, wantCompleted)
 				}
-				if got := wp.WaitingQueueSize(); got != 0 {
-					t.Errorf("queue size after shutdown = %d, want 0", got)
+				wantWaiting := queued - wantCompleted
+				if got := wp.WaitingQueueSize(); got != wantWaiting {
+					t.Errorf("queue size after shutdown = %d, want %d", got, wantWaiting)
 				}
 				if got := wp.waitingQueue.Cap(); got != 0 {
 					t.Errorf("retained queue capacity after shutdown = %d, want 0", got)
@@ -398,6 +399,9 @@ func TestOverflow(t *testing.T) {
 			close(releaseChan)
 		}()
 		wp.Stop()
+		if qlen := wp.WaitingQueueSize(); qlen != 62 {
+			t.Fatal("Expected 62 unprocessed tasks after stop, have", qlen)
+		}
 	})
 }
 
