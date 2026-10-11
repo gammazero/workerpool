@@ -249,6 +249,7 @@ Loop:
 	if p.wait {
 		p.runQueuedTasks()
 	}
+	p.waitingQueue = deque.Deque[func()]{}
 
 	// Stop all remaining workers as they become ready.
 	for workerCount > 0 {
