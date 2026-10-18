@@ -69,8 +69,11 @@ func (p *Pacer) Pace(task func()) func() {
 
 // Next submits a run request to the gate and returns when it is time to run.
 func (p *Pacer) Next() {
+	// Hold the pause token until the run request has been accepted.
+	p.pause <- struct{}{}
 	// Wait for item to be read from gate.
 	p.gate <- struct{}{}
+	<-p.pause
 }
 
 // Stop stops the Pacer from running. Do not call until all paced tasks have
@@ -101,7 +104,5 @@ func (p *Pacer) run() {
 	// unbuffered channel serves as a "tick" and unblocks the writer.
 	for range p.gate {
 		time.Sleep(p.delay)
-		p.pause <- struct{}{} // will wait here if channel blocked
-		<-p.pause             // clear channel
 	}
 }

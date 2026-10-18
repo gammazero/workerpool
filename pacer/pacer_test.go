@@ -61,3 +61,28 @@ func TestPacedWorkers(t *testing.T) {
 		t.Fatal("Did not pace tasks correctly - finished too soon:", elapsed)
 	}
 }
+
+func TestPauseBeforeFirstTask(t *testing.T) {
+	p := NewPacer(time.Millisecond)
+	defer p.Stop()
+	p.Pause()
+
+	done := make(chan struct{})
+	go func() {
+		p.Next()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Error("Next returned while the pacer was paused")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	p.Resume()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Next did not return after Resume")
+	}
+}
