@@ -17,7 +17,7 @@ import "time"
 // faster than one per delay time.
 //
 // To use Pacer, create a new Pacer giving the interval that must elapse
-// between the start of one task the start of the next task. Then call Pace(),
+// between the start of one task and the start of the next task. Then call Pace(),
 // passing your task function. A new paced task function is returned that can
 // then be passed to WorkerPool's Submit() or SubmitWait(), or called as a go
 // routine. Paced functions, that are run as goroutines, are also paced. For
@@ -95,16 +95,21 @@ func (p *Pacer) IsPaused() bool {
 	return len(p.paused) != 0
 }
 
-// Pause suspends execution of any tasks by the pacer.
+// Pause suspends execution of any tasks by the pacer. Calling Pause when the
+// pacer is already paused waits until the pacer is resumed.
 func (p *Pacer) Pause() {
 	p.pause <- struct{}{}  // block this channel
 	p.paused <- struct{}{} // set flag to indicate paused
 }
 
-// Resume continues execution after Pause.
+// Resume continues execution after Pause. Calling Resume when the pacer is not
+// paused does nothing.
 func (p *Pacer) Resume() {
-	<-p.paused // clear flag to indicate paused
-	<-p.pause  // unblock this channel
+	select {
+	case <-p.paused: // clear flag to indicate paused
+		<-p.pause // unblock this channel
+	default:
+	}
 }
 
 func (p *Pacer) run() {

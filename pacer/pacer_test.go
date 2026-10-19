@@ -149,6 +149,33 @@ func TestPauseWithWaitingCallers(t *testing.T) {
 	})
 }
 
+func TestResumeWhenNotPaused(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		p := NewPacer(time.Millisecond)
+		defer stopPacer(p)
+
+		// Resume without Pause must not block.
+		p.Resume()
+		if p.IsPaused() {
+			t.Fatal("should not be paused")
+		}
+
+		// Pause and Resume still work, and an extra Resume does nothing.
+		p.Pause()
+		if !p.IsPaused() {
+			t.Fatal("should be paused")
+		}
+		p.Resume()
+		p.Resume()
+		if p.IsPaused() {
+			t.Fatal("should not be paused")
+		}
+		p.Next()
+	})
+}
+
 // stopPacer stops p and lets its run goroutine finish any pacing delay it is
 // sleeping through, so it can exit before the synctest bubble ends. Fake time
 // does not advance after the bubble's main goroutine returns.
