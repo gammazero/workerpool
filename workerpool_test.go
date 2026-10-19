@@ -726,6 +726,61 @@ func TestPanicDo(t *testing.T) {
 	}
 }
 
+// Run this test with race detector to test that calling Do concurrently with
+// Stop has no race condition.
+func TestDoConcurrentStop(t *testing.T) {
+	for range 100 {
+		wp := New(2)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for {
+				err := wp.Do(func() {})
+				if errors.Is(err, ErrStopped) {
+					return
+				}
+				if err != nil {
+					t.Error("unexpected error:", err)
+					return
+				}
+			}
+		}()
+		wp.Stop()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Do did not return ErrStopped after Stop")
+		}
+	}
+}
+
+func TestStoppedDuringPause(t *testing.T) {
+	wp := New(1)
+	defer wp.Stop()
+
+	// Both pauses last until Stop or the end of the test.
+	wp.Pause(t.Context())
+
+	// Start a second pause, which waits for the first pause to be canceled.
+	go wp.Pause(t.Context())
+	for wp.WaitingQueueSize() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+
+	done := make(chan bool)
+	go func() {
+		done <- wp.Stopped()
+	}()
+	select {
+	case stopped := <-done:
+		if stopped {
+			t.Error("expected pool not stopped")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Stopped blocked while Pause was waiting")
+	}
+}
+
 func assertPanics(t *testing.T, name string, f func()) {
 	t.Helper()
 	defer func() {
