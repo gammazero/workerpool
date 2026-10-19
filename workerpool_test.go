@@ -376,6 +376,109 @@ func TestSubmitWait(t *testing.T) {
 	})
 }
 
+func TestDoWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		wp := New(1)
+
+		// Check that this is noop.
+		if err := wp.DoWait(nil); err != nil {
+			t.Fatal("unexpected error:", err)
+		}
+
+		done := make(chan struct{})
+		err := wp.DoWait(func() {
+			time.Sleep(100 * time.Millisecond)
+			close(done)
+		})
+		if err != nil {
+			t.Fatal("unexpected error:", err)
+		}
+		select {
+		case <-done:
+		default:
+			t.Fatal("DoWait did not wait for function to execute")
+		}
+
+		wp.Stop()
+		err = wp.DoWait(func() {
+			t.Error("task should not have run")
+		})
+		if !errors.Is(err, ErrStopped) {
+			t.Fatal("expected ErrStopped, got:", err)
+		}
+	})
+}
+
+func TestDoWaitStop(t *testing.T) {
+	testWaitStop(t, (*WorkerPool).DoWait)
+}
+
+func TestSubmitWaitStop(t *testing.T) {
+	// SubmitWait panics with the error that DoWait returns.
+	testWaitStop(t, func(wp *WorkerPool, task func()) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = r.(error)
+			}
+		}()
+		wp.SubmitWait(task)
+		return nil
+	})
+}
+
+func testWaitStop(t *testing.T, doWait func(*WorkerPool, func()) error) {
+	for _, wait := range []bool{false, true} {
+		synctest.Test(t, func(t *testing.T) {
+			wp := New(1)
+
+			// Occupy the only worker so that the next task is queued.
+			release := make(chan struct{})
+			wp.Submit(func() {
+				<-release
+			})
+
+			var ran bool
+			errChan := make(chan error)
+			go func() {
+				errChan <- doWait(wp, func() {
+					ran = true
+				})
+			}()
+			synctest.Wait()
+			if wp.WaitingQueueSize() != 1 {
+				t.Fatal("expected task on waiting queue")
+			}
+
+			if wait {
+				go wp.StopWait()
+			} else {
+				go wp.Stop()
+			}
+			synctest.Wait()
+			close(release)
+
+			err := <-errChan
+			if wait {
+				// StopWait runs the queued task.
+				if err != nil {
+					t.Fatal("unexpected error:", err)
+				}
+				if !ran {
+					t.Fatal("task did not run")
+				}
+			} else {
+				// Stop abandons the queued task, and waiting must not hang.
+				if !errors.Is(err, ErrStopped) {
+					t.Fatal("expected ErrStopped, got:", err)
+				}
+				if ran {
+					t.Fatal("abandoned task should not have run")
+				}
+			}
+		})
+	}
+}
+
 func TestOverflow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		wp := New(2)
@@ -730,27 +833,27 @@ func TestPanicDo(t *testing.T) {
 // Stop has no race condition.
 func TestDoConcurrentStop(t *testing.T) {
 	for range 100 {
-		wp := New(2)
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			for {
-				err := wp.Do(func() {})
-				if errors.Is(err, ErrStopped) {
-					return
+		synctest.Test(t, func(t *testing.T) {
+			wp := New(2)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				for {
+					err := wp.Do(func() {})
+					if errors.Is(err, ErrStopped) {
+						return
+					}
+					if err != nil {
+						t.Error("unexpected error:", err)
+						return
+					}
 				}
-				if err != nil {
-					t.Error("unexpected error:", err)
-					return
-				}
-			}
-		}()
-		wp.Stop()
-		select {
-		case <-done:
-		case <-time.After(time.Second):
-			t.Fatal("Do did not return ErrStopped after Stop")
-		}
+			}()
+			wp.Stop()
+			// If Do blocks instead of returning ErrStopped, synctest reports a
+			// deadlock.
+			<-done
+		})
 	}
 }
 

@@ -40,8 +40,12 @@ func TestPacedWorkers(t *testing.T) {
 		// Cause worker to be created, and available for reuse before next
 		// task.
 		for range 10 {
-			wp.Submit(pacedTask)
-			wp.Submit(slowPacedTask)
+			if err := wp.Do(pacedTask); err != nil {
+				t.Fatal(err)
+			}
+			if err := wp.Do(slowPacedTask); err != nil {
+				t.Fatal(err)
+			}
 		}
 
 		time.Sleep(500 * time.Millisecond)

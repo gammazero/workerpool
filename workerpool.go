@@ -69,7 +69,7 @@ func (p *WorkerPool) Size() int {
 
 // Stop stops the worker pool and waits for only currently running tasks to
 // complete. Pending tasks that are not currently running are abandoned. Once
-// stopped, Do returns ErrStopped and Submit and SubmitWait panic.
+// stopped, Do and DoWait return ErrStopped.
 //
 // Since creating the worker pool starts at least one goroutine, for the
 // dispatcher, Stop() or StopWait() should be called when the worker pool is no
@@ -132,26 +132,52 @@ func (p *WorkerPool) Do(task func()) error {
 	return nil
 }
 
-// Submit enqueues the given function without blocking. Panics if the worker
-// pool is stopped.
+// DoWait enqueues the given function and waits for it to be executed. Returns
+// ErrStopped if the worker pool is stopped, or if the worker pool is stopped
+// with Stop before the task is executed. When stopped with StopWait, the task
+// is executed before DoWait returns.
+func (p *WorkerPool) DoWait(task func()) error {
+	if task == nil {
+		return nil
+	}
+	doneChan := make(chan struct{})
+	err := p.Do(func() {
+		task()
+		close(doneChan)
+	})
+	if err != nil {
+		return err
+	}
+	select {
+	case <-doneChan:
+	case <-p.stoppedChan:
+		// The stoppedChan is closed after all workers exit, so if the task
+		// was executed then doneChan is already closed.
+		select {
+		case <-doneChan:
+		default:
+			return ErrStopped
+		}
+	}
+	return nil
+}
+
+// Submit enqueues the given function without blocking. Submit is like Do but
+// panics instead of returning ErrStopped. Use Submit when submitting to a
+// stopped worker pool is a programming error.
 func (p *WorkerPool) Submit(task func()) {
 	if err := p.Do(task); err != nil {
 		panic(err)
 	}
 }
 
-// SubmitWait enqueues the given function, without blocking, and waits for it
-// to be executed. Panics if the worker pool is stopped.
+// SubmitWait enqueues the given function and waits for it to be executed.
+// SubmitWait is like DoWait but panics instead of returning ErrStopped. Use
+// SubmitWait when submitting to a stopped worker pool is a programming error.
 func (p *WorkerPool) SubmitWait(task func()) {
-	if task == nil {
-		return
+	if err := p.DoWait(task); err != nil {
+		panic(err)
 	}
-	doneChan := make(chan struct{})
-	p.Submit(func() {
-		task()
-		close(doneChan)
-	})
-	<-doneChan
 }
 
 // WaitingQueueSize returns the count of tasks in the waiting queue.
