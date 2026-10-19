@@ -6,7 +6,7 @@ the workers. This is useful when performing tasks that require sufficient
 resources (CPU, memory, etc.), and running too many tasks at the same time
 would exhaust resources.
 
-Non-blocking task submission
+# Non-blocking task submission
 
 A task is a function submitted to the worker pool for execution. Submitting
 tasks to this worker pool will not block, regardless of the number of tasks.
@@ -24,7 +24,7 @@ distributing load over multiple systems, and/or storing input for pending
 processing in intermediate storage such as a database, file system, distributed
 message queue, etc.
 
-Dispatcher
+# Dispatcher
 
 This worker pool uses a single dispatcher goroutine to read tasks from the
 input task queue and dispatch them to worker goroutines. This allows for a
@@ -38,14 +38,14 @@ the dispatcher. This is done until there are no more workers to remove. The
 minimum number of workers is always zero, because the time to start new workers
 is insignificant.
 
-Usage note
+# Usage note
 
 It is advisable to use different worker pools for tasks that are bound by
 different resources, or that have different resource use patterns. For example,
 tasks that use X Mb of memory may need different concurrency limits than tasks
 that use Y Mb of memory.
 
-Waiting queue vs goroutines
+# Waiting queue vs goroutines
 
 When there are no available workers to handle incoming tasks, the tasks are put
 on a waiting queue, in this implementation. In implementations mentioned in the
@@ -55,12 +55,11 @@ waiting task, allowing a much higher number of waiting tasks. Also, using a
 waiting queue ensures that tasks are given to workers in the order the tasks
 were received.
 
-Credits
+# Credits
 
 This implementation builds on ideas from the following:
 
 http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang
 http://nesv.github.io/golang/2014/02/25/worker-queues-in-go.html
-
 */
 package workerpool
