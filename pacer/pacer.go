@@ -7,7 +7,6 @@ same time.
 The pacer package is independent of the workerpool package. Paced functions can
 be submitted to a workerpool or can be run as goroutines, and execution will be
 paced in both cases.
-
 */
 package pacer
 
@@ -24,16 +23,16 @@ import "time"
 // routine. Paced functions, that are run as goroutines, are also paced. For
 // example:
 //
-//     pacer := pacer.NewPacer(time.Second)
+//	pacer := pacer.NewPacer(time.Second)
 //
-//     pacedTask := pacer.Pace(func() {
-//         fmt.Println("Hello World")
-//     })
+//	pacedTask := pacer.Pace(func() {
+//	    fmt.Println("Hello World")
+//	})
 //
-//     wp := workerpool.New(5)
-//     wp.Submit(pacedTask)
+//	wp := workerpool.New(5)
+//	wp.Submit(pacedTask)
 //
-//     go pacedTask()
+//	go pacedTask()
 //
 // NOTE: Do not call Pacer.Stop() until all paced tasks have completed, or
 // paced tasks will hang waiting for pacer to unblock them.
@@ -42,6 +41,7 @@ type Pacer struct {
 	gate   chan struct{}
 	pause  chan struct{}
 	paused chan struct{}
+	turn   chan struct{}
 }
 
 // NewPacer creates and runs a new Pacer.
@@ -51,6 +51,7 @@ func NewPacer(delay time.Duration) *Pacer {
 		gate:   make(chan struct{}),
 		pause:  make(chan struct{}, 1),
 		paused: make(chan struct{}, 1),
+		turn:   make(chan struct{}, 1),
 	}
 
 	go p.run()
@@ -69,8 +70,18 @@ func (p *Pacer) Pace(task func()) func() {
 
 // Next submits a run request to the gate and returns when it is time to run.
 func (p *Pacer) Next() {
+	// Only one caller at a time competes with Pause for the pause token, so
+	// Pause is not queued behind all waiting callers.
+	p.turn <- struct{}{}
+	// Hold the pause token until the run request is accepted, so that Pause
+	// prevents any task from being released.
+	p.pause <- struct{}{}
 	// Wait for item to be read from gate.
 	p.gate <- struct{}{}
+	// Release pause before turn so that Pause gets the token before the next
+	// caller.
+	<-p.pause
+	<-p.turn
 }
 
 // Stop stops the Pacer from running. Do not call until all paced tasks have
@@ -101,7 +112,5 @@ func (p *Pacer) run() {
 	// unbuffered channel serves as a "tick" and unblocks the writer.
 	for range p.gate {
 		time.Sleep(p.delay)
-		p.pause <- struct{}{} // will wait here if channel blocked
-		<-p.pause             // clear channel
 	}
 }
