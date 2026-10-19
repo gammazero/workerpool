@@ -21,7 +21,7 @@ go test -race ./...
 
 The whole pool lives in two files: `workerpool.go` (mechanics) and `options.go` (functional options). Understanding it requires seeing how three queues interact:
 
-- `taskQueue` (unbuffered chan): where `Submit`/`Do` hand tasks to the dispatcher.
+- `taskQueue` (unbuffered chan): where `Do` hands tasks to the dispatcher.
 - `workerQueue` (unbuffered chan): where the dispatcher hands tasks to workers. Sending `nil` on it kills a worker.
 - `waitingQueue` (`deque.Deque`, owned solely by the dispatcher): overflow buffer when all `maxWorkers` workers are busy. Its length is mirrored into the atomic `waiting` counter so `WaitingQueueSize()` is lock-free.
 
@@ -30,7 +30,7 @@ A single dispatcher goroutine (`dispatch`), started by `New`, is the only gorout
 Non-obvious invariants to preserve when changing this code:
 
 - Task submission must never block, no matter how many tasks are queued.
-- `Do` detects a stopped pool by recovering from the panic caused by sending on the closed `taskQueue`; `Submit` panics on a stopped pool while `Do` returns `ErrStopped`.
+- `Do` holds `submitLock` for reading while it checks `stopped` and sends on `taskQueue`; `stop` takes it for writing to close `taskQueue`, so a send never races the close. `Do` and `DoWait` return `ErrStopped` on a stopped pool, and `DoWait` also returns it when `Stop` abandons its queued task. `Submit` and `SubmitWait` are supported wrappers that panic with those errors, for callers where submitting to a stopped pool is a bug; keep them, and keep examples on `Do` and `DoWait`.
 - `Stop` abandons queued tasks; `StopWait` drains them (`p.wait` flag read by the dispatcher after its loop exits). Both are safe to call multiple times via `stopOnce`, and both wait for `stoppedChan`.
 - `Pause` works by submitting `maxWorkers` blocking tasks that wait on the caller's Context or on `stopSignal`; `stopLock` orders Pause against Stop so a stop always unpauses workers before closing `taskQueue`.
 

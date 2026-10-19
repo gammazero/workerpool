@@ -36,9 +36,12 @@ func main() {
 	requests := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
 
 	for _, r := range requests {
-		wp.Submit(func() {
+		err := wp.Do(func() {
 			fmt.Println("Handling request:", r)
 		})
+		if err != nil {
+			fmt.Println("Cannot handle request:", err)
+		}
 	}
 
 	wp.StopWait()
